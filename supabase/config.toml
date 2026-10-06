@@ -1,0 +1,8 @@
+[functions.telegram-bot]
+verify_jwt = false
+
+[functions.yasno-api]
+verify_jwt = false
+
+[functions.notification-checker]
+verify_jwt = false
