@@ -158,7 +158,6 @@ function setChatMenuButton() {
 
 const mainKeyboard = {
   inline_keyboard: [
-    [{ text: "📊 Відкрити графік", web_app: { url: MINI_APP_URL } }],
     [
       { text: "🟢 Мій статус", callback_data: "status" },
       { text: "🕒 Коли світло", callback_data: "next" },
@@ -349,7 +348,7 @@ async function handleHelp(chatId: number) {
     `<b>📖 Як користуватися</b>
 
 ` +
-      `<b>1.</b> Натисніть «📊 Відкрити графік» і оберіть область, місто та чергу
+      `<b>1.</b> Натисніть синю кнопку меню «Графік світла» внизу чата та оберіть область, місто і чергу
 ` +
       `<b>2.</b> У «🔔 Сповіщення» увімкніть повідомлення й оберіть інтервал — 30 або 60 хвилин
 ` +
