@@ -99,7 +99,7 @@ function getHourStatus(sorted: Slot[], hour: number): 'on' | 'off' | 'partial' {
 }
 
 // ── Theme / Design / Density types ────────────────────────────
-type ThemeMode = 'auto' | 'light' | 'dark';
+type ThemeMode = 'light' | 'dark';
 type Density = 'minimal' | 'standard' | 'extended';
 
 const DENSITY_OPTIONS: { id: Density; name: string; desc: string; icon: typeof Gauge }[] = [
@@ -109,12 +109,14 @@ const DENSITY_OPTIONS: { id: Density; name: string; desc: string; icon: typeof G
 ];
 
 function getInitialThemeMode(): ThemeMode {
-  if (typeof window === 'undefined') return 'auto';
-  return (localStorage.getItem('themeMode') as ThemeMode) || 'auto';
+  if (typeof window === 'undefined') return 'light';
+  const saved = localStorage.getItem('themeMode');
+  return saved === 'dark' ? 'dark' : 'light';
 }
 function getInitialDensity(): Density {
-  if (typeof window === 'undefined') return 'standard';
-  return (localStorage.getItem('density') as Density) || 'standard';
+  if (typeof window === 'undefined') return 'extended';
+  const saved = localStorage.getItem('density');
+  return saved === 'minimal' || saved === 'standard' ? saved : 'extended';
 }
 
 // ── Aurora background (glass design) ──────────────────────────
@@ -845,13 +847,8 @@ function App() {
 
   useEffect(() => { initTelegramWebApp(); }, []);
 
-  // Auto theme follows Kyiv daytime (7:00–19:00 = light)
-  const resolvedTheme: 'light' | 'dark' = useMemo(() => {
-    if (themeMode === 'auto') {
-      return now.hours >= 7 && now.hours < 19 ? 'light' : 'dark';
-    }
-    return themeMode;
-  }, [themeMode, now]);
+  // Theme is always one of light/dark; default is light.
+  const resolvedTheme: 'light' | 'dark' = themeMode;
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
@@ -1084,14 +1081,13 @@ function App() {
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => {
-                  setThemeMode(themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto');
+                  setThemeMode(themeMode === 'light' ? 'dark' : 'light');
                   hapticImpact('light');
                 }}
                 className="d-btn flex h-9 w-9 items-center justify-center rounded-full"
                 aria-label="Тема"
-                title={themeMode === 'auto' ? 'Авто (за часом доби)' : themeMode === 'light' ? 'Світла тема' : 'Темна тема'}
+                title={themeMode === 'light' ? 'Світла тема' : 'Темна тема'}
               >
-                {themeMode === 'auto' && <Clock className="h-4 w-4 accent-c" />}
                 {themeMode === 'light' && <Sun className="h-4 w-4 text-amber-400" />}
                 {themeMode === 'dark' && <Moon className="h-4 w-4 text-slate-400" />}
               </button>
@@ -1135,12 +1131,9 @@ function App() {
               <div className="underlay-breathe h-56 w-80 rounded-full bg-blue-500/20 blur-[90px]" />
             </div>
             <div className="pointer-events-none absolute -right-10 top-64 -z-10 h-40 w-40 rounded-full bg-emerald-500/15 blur-[70px]" />
-            {density !== 'minimal' && (
-              <div className="mb-4 text-center fade-in">
-                <span className="clock-glow font-mono text-2xl font-bold tracking-tight text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{now.timeString}</span>
-                <span className="ml-2 text-xs text-muted-c">Київ</span>
-              </div>
-            )}
+                <div className="mb-4 text-center fade-in">
+                  <div className="clock-glow font-mono text-5xl font-bold tracking-tight text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{now.timeString}</div>
+                </div>
 
             {saved && (
               <div className="mb-3 flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500/8 px-3 py-2 text-xs text-emerald-600 dark:text-emerald-300 fade-in">
@@ -1254,7 +1247,7 @@ function App() {
                 )}
 
                 <footer className="mt-6 border-t border-subtle-c pt-3 text-center">
-                  <p className="text-xs text-muted-c">Дані з офіційних та неофіційних джерел · Київський час</p>
+                  <p className="text-xs text-muted-c">Дані з офіційних та неофіційних джерел</p>
                 </footer>
               </>
             )}
@@ -1291,13 +1284,13 @@ function App() {
             <div>
               <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Тема</h3>
               <div className="segmented flex w-full">
-                {(['auto', 'light', 'dark'] as ThemeMode[]).map((m) => (
+                {(['light', 'dark'] as ThemeMode[]).map((m) => (
                   <button
                     key={m}
                     onClick={() => { setThemeMode(m); hapticImpact('light'); }}
                     className={`segmented-item flex-1 px-3 py-1.5 text-xs font-semibold ${themeMode === m ? 'active text-primary-c' : 'text-secondary-c'}`}
                   >
-                    {m === 'auto' ? 'Авто' : m === 'light' ? 'Світла' : 'Темна'}
+                    {m === 'light' ? 'Світла' : 'Темна'}
                   </button>
                 ))}
               </div>
