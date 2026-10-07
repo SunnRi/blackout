@@ -372,7 +372,7 @@ async function handleStart(msg: TGMessage) {
 ` +
       `⬇️ Натисніть кнопку <b>«Відкрити графік світла»</b> під цим повідомленням — додаток відкриється одразу.
 ` +
-      `(Та сама дія — синя кнопка меню <b>слева</b> біля поля введення.)
+      `(Та сама дія — синя кнопка меню <b>зліва</b> біля поля введення.)
 
 ` +
       `<b>Що я вмію:</b>
@@ -397,7 +397,7 @@ async function handleHelp(chatId: number) {
     `<b>📖 Як користуватися</b>
 
 ` +
-      `<b>1.</b> 📲 Натисніть <b>синю кнопку меню слева</b> внизу чата (біля поля введення) — відкриється додаток «Графік світла». Оберіть там область, місто і чергу
+      `<b>1.</b> 📲 Натисніть <b>синю кнопку меню зліва</b> внизу чата (біля поля введення) — відкриється додаток «Графік світла». Оберіть там область, місто і чергу
 ` +
       `<b>2.</b> У «🔔 Сповіщення» увімкніть повідомлення й оберіть інтервал — 30 або 60 хвилин
 ` +
@@ -449,7 +449,7 @@ async function handleStatus(chatId: number, tgUserId: number, editOf?: number) {
     await sendOrUpdate(
       chatId,
       editOf,
-      `⚙️ Спочатку оберіть місто та чергу в додатку «Графік світла» (синя кнопка меню слева) — і я покажу ваш статус.`,
+      `⚙️ Спочатку оберіть місто та чергу в додатку «Графік світла» (синя кнопка меню зліва) — і я покажу ваш статус.`,
       mainKeyboard,
     );
     return;
@@ -495,7 +495,7 @@ async function handleStatus(chatId: number, tgUserId: number, editOf?: number) {
     const until = current ? formatDuration(current.end - cur) : "";
     body = `🔴 <b>Світла немає</b>
 ` +
-      `⏱ Вернеться о <b>${minutesToTime(current!.end)}</b> · через ${until}`;
+      `⏱ Світло повернеться о <b>${minutesToTime(current!.end)}</b> · через ${until}`;
     if (nextOn) body += `\n\n🟢 Далі світло: <b>${minutesToTime(nextOn.start)} – ${minutesToTime(nextOn.end)}</b>`;
   } else {
     body = `🟢 <b>Світло є</b>`;
@@ -523,7 +523,7 @@ async function handleNext(chatId: number, tgUserId: number, editOf?: number) {
     await sendOrUpdate(
       chatId,
       editOf,
-      `⚙️ Спочатку оберіть місто та чергу в додатку «Графік світла» (синя кнопка меню слева) — і я покажу розклад.`,
+      `⚙️ Спочатку оберіть місто та чергу в додатку «Графік світла» (синя кнопка меню зліва) — і я покажу розклад.`,
       mainKeyboard,
     );
     return;
