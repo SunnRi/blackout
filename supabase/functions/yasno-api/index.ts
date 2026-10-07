@@ -15,6 +15,7 @@ const YASNO_DSO_ID = 902;
 // All oblasts of Ukraine with their bezsvitla slugs.
 // `available: false` = no schedules published on bezsvitla yet.
 const OBLASTS: { slug: string; name: string; available: boolean }[] = [
+  { slug: "kyiv-city", name: "Київ (місто)", available: true },
   { slug: "vinnytska-oblast", name: "Вінницька область", available: true },
   { slug: "volynska-oblast", name: "Волинська область", available: true },
   { slug: "dnipropetrovska-oblast", name: "Дніпропетровська область", available: true },
@@ -128,6 +129,9 @@ type Settlement = { slug: string; name: string };
 // Districts, hromadas and queue pages live in separate sitemaps — excluded.
 const SETTLEMENTS_SITEMAP = "https://bezsvitla.com.ua/sitemap-settlements.xml";
 const HROMADAS_SITEMAP = "https://bezsvitla.com.ua/sitemap-hromadas.xml";
+// Major cities (Біла Церква, Бровари, Буча...) live in a separate sitemap
+// with two-level paths <oblast>/<city>.
+const CITIES_SITEMAP = "https://bezsvitla.com.ua/sitemap-cities.xml";
 
 let settlementsCache: { at: number; data: Map<string, Settlement[]> } | null = null;
 const SETTLEMENTS_TTL = 30 * 60 * 1000;
@@ -190,6 +194,27 @@ async function fetchAllSettlements(): Promise<Map<string, Settlement[]>> {
     const dupeKey = `${oblast}|${clean}`;
     dupes.set(dupeKey, (dupes.get(dupeKey) ?? 0) + 1);
     raw.push({ oblast, slug: parts.slice(1).join("/"), name: clean, hromada: hromadaName });
+  }
+
+  // Major cities: two-level paths, no hromada segment, no duplicate names
+  const citiesResp = await fetchWithTimeout(CITIES_SITEMAP, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" },
+  });
+  if (citiesResp.ok) {
+    const citiesXml = await citiesResp.text();
+    for (const m of citiesXml.matchAll(entryRe)) {
+      const loc = m[1].match(/<loc>([^<]+)<\/loc>/)?.[1];
+      const title = m[1].match(/<image:title>([^<]+)<\/image:title>/)?.[1];
+      if (!loc || !title) continue;
+      const path = loc.replace("https://bezsvitla.com.ua/", "");
+      const parts = path.split("/");
+      if (parts.length !== 2) continue;
+      const [oblast, slug] = parts;
+      if (oblast === "kyiv-city") continue;
+      const clean = title.split("—").pop()!.trim();
+      if (!clean) continue;
+      raw.push({ oblast, slug, name: clean, hromada: "" });
+    }
   }
   for (const r of raw) {
     const isDupe = (dupes.get(`${r.oblast}|${r.name}`) ?? 0) > 1;
