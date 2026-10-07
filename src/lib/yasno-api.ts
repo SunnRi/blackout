@@ -1,6 +1,32 @@
 const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/yasno-api`;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Fallback city list used when the Edge Function is unreachable
+const FALLBACK_CITIES = [
+  { slug: 'kyiv', name: 'Київ (місто)' },
+  { slug: 'bila-tserkva', name: 'Біла Церква' },
+  { slug: 'boryspil', name: 'Бориспіль' },
+  { slug: 'brovary', name: 'Бровари' },
+  { slug: 'bucha', name: 'Буча' },
+  { slug: 'boyarka', name: 'Боярка' },
+  { slug: 'vasylkiv', name: 'Васильків' },
+  { slug: 'vyshhorod', name: 'Вишгород' },
+  { slug: 'vyshneve', name: 'Вишневе' },
+  { slug: 'irpin', name: 'Ірпінь' },
+  { slug: 'obukhiv', name: 'Обухів' },
+  { slug: 'fastiv', name: 'Фастів' },
+  { slug: 'yahotyn', name: 'Яготин' },
+  { slug: 'pereiaslav', name: 'Переяслав' },
+  { slug: 'slavutych', name: 'Славутич' },
+  { slug: 'kaharlyk', name: 'Кагарлик' },
+  { slug: 'myronivka', name: 'Миронівка' },
+  { slug: 'tetiiv', name: 'Тетіїв' },
+  { slug: 'uzyn', name: 'Узин' },
+  { slug: 'berezan', name: 'Березань' },
+  { slug: 'bohuslav', name: 'Богуслав' },
+  { slug: 'ruzhyn', name: 'Ружин' },
+];
+
 async function apiFetch(endpoint: string, params?: Record<string, string>): Promise<unknown> {
   const u = new URL(API_URL);
   u.searchParams.set('endpoint', endpoint);
@@ -10,17 +36,27 @@ async function apiFetch(endpoint: string, params?: Record<string, string>): Prom
     }
   }
 
-  const resp = await fetch(u.toString(), {
-    headers: {
-      Authorization: `Bearer ${ANON_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`API error ${resp.status}: ${text}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const resp = await fetch(u.toString(), {
+      headers: {
+        Authorization: `Bearer ${ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`API error ${resp.status}: ${text}`);
+    }
+    return resp.json();
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
   }
-  return resp.json();
 }
 
 export type City = {
@@ -47,7 +83,11 @@ export type CitySchedule = {
 };
 
 export async function fetchCities(): Promise<City[]> {
-  return apiFetch('cities') as Promise<City[]>;
+  try {
+    return await apiFetch('cities') as City[];
+  } catch {
+    return FALLBACK_CITIES;
+  }
 }
 
 export async function fetchTodaySchedule(citySlug: string): Promise<CitySchedule> {
