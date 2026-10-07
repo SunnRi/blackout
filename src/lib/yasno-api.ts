@@ -1,8 +1,9 @@
 const YASNO_API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/yasno-api`;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-async function yasnoFetch(path: string, params?: Record<string, string>): Promise<unknown> {
-  const u = new URL(`${YASNO_API_URL}${path}`);
+async function yasnoFetch(endpoint: string, params?: Record<string, string>): Promise<unknown> {
+  const u = new URL(YASNO_API_URL);
+  u.searchParams.set('endpoint', endpoint);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       u.searchParams.set(k, v);
@@ -82,23 +83,23 @@ export type YasnoGroupResponse = {
 };
 
 export async function fetchRegions(): Promise<YasnoRegion[]> {
-  return yasnoFetch('/regions') as Promise<YasnoRegion[]>;
+  return yasnoFetch('regions') as Promise<YasnoRegion[]>;
 }
 
 export async function fetchPlannedOutages(regionId: number, dsoId: number): Promise<YasnoPlannedOutages> {
-  return yasnoFetch('/planned-outages', { regionId: String(regionId), dsoId: String(dsoId) }) as Promise<YasnoPlannedOutages>;
+  return yasnoFetch('planned-outages', { regionId: String(regionId), dsoId: String(dsoId) }) as Promise<YasnoPlannedOutages>;
 }
 
 export async function fetchProbableOutages(regionId: number, dsoId: number): Promise<YasnoProbableOutages> {
-  return yasnoFetch('/probable-outages', { regionId: String(regionId), dsoId: String(dsoId) }) as Promise<YasnoProbableOutages>;
+  return yasnoFetch('probable-outages', { regionId: String(regionId), dsoId: String(dsoId) }) as Promise<YasnoProbableOutages>;
 }
 
 export async function fetchStreets(regionId: number, dsoId: number, query: string): Promise<YasnoStreet[]> {
-  return yasnoFetch('/streets', { regionId: String(regionId), dsoId: String(dsoId), query }) as Promise<YasnoStreet[]>;
+  return yasnoFetch('streets', { regionId: String(regionId), dsoId: String(dsoId), query }) as Promise<YasnoStreet[]>;
 }
 
 export async function fetchHouses(regionId: number, dsoId: number, streetId: number, query: string): Promise<YasnoHouse[]> {
-  return yasnoFetch('/houses', {
+  return yasnoFetch('houses', {
     regionId: String(regionId),
     dsoId: String(dsoId),
     streetId: String(streetId),
@@ -112,7 +113,7 @@ export async function fetchGroupByAddress(
   streetId: number,
   houseId: number,
 ): Promise<YasnoGroupResponse> {
-  return yasnoFetch('/group', {
+  return yasnoFetch('group', {
     regionId: String(regionId),
     dsoId: String(dsoId),
     streetId: String(streetId),

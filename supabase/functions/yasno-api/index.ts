@@ -14,65 +14,61 @@ Deno.serve(async (req: Request) => {
 
   try {
     const url = new URL(req.url);
-    const path = url.pathname.replace("/functions/v1/yasno-api", "");
     const params = url.searchParams;
 
-    let yasnoUrl: string;
+    const endpoint = params.get("endpoint") || "regions";
     const regionId = params.get("regionId");
     const dsoId = params.get("dsoId");
 
-    if (path === "/regions" || path === "" || path === "/") {
-      yasnoUrl = `${YASNO_BASE}/addresses/v2/regions`;
-    } else if (path === "/planned-outages") {
-      if (!regionId || !dsoId) {
-        return new Response(
-          JSON.stringify({ error: "regionId and dsoId are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+    let yasnoUrl: string;
+
+    switch (endpoint) {
+      case "regions": {
+        yasnoUrl = `${YASNO_BASE}/addresses/v2/regions`;
+        break;
       }
-      yasnoUrl = `${YASNO_BASE}/regions/${regionId}/dsos/${dsoId}/planned-outages`;
-    } else if (path === "/probable-outages") {
-      if (!regionId || !dsoId) {
-        return new Response(
-          JSON.stringify({ error: "regionId and dsoId are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+      case "planned-outages": {
+        if (!regionId || !dsoId) {
+          return jsonError("regionId and dsoId are required", 400);
+        }
+        yasnoUrl = `${YASNO_BASE}/regions/${regionId}/dsos/${dsoId}/planned-outages`;
+        break;
       }
-      yasnoUrl = `${YASNO_BASE}/probable-outages?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}`;
-    } else if (path === "/streets") {
-      const query = params.get("query");
-      if (!regionId || !dsoId || !query) {
-        return new Response(
-          JSON.stringify({ error: "regionId, dsoId, and query are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+      case "probable-outages": {
+        if (!regionId || !dsoId) {
+          return jsonError("regionId and dsoId are required", 400);
+        }
+        yasnoUrl = `${YASNO_BASE}/probable-outages?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}`;
+        break;
       }
-      yasnoUrl = `${YASNO_BASE}/addresses/v2/streets?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&query=${encodeURIComponent(query)}`;
-    } else if (path === "/houses") {
-      const streetId = params.get("streetId");
-      const query = params.get("query");
-      if (!regionId || !dsoId || !streetId || !query) {
-        return new Response(
-          JSON.stringify({ error: "regionId, dsoId, streetId, and query are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+      case "streets": {
+        const query = params.get("query");
+        if (!regionId || !dsoId || !query) {
+          return jsonError("regionId, dsoId, and query are required", 400);
+        }
+        yasnoUrl = `${YASNO_BASE}/addresses/v2/streets?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&query=${encodeURIComponent(query)}`;
+        break;
       }
-      yasnoUrl = `${YASNO_BASE}/addresses/v2/houses?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&streetId=${encodeURIComponent(streetId)}&query=${encodeURIComponent(query)}`;
-    } else if (path === "/group") {
-      const streetId = params.get("streetId");
-      const houseId = params.get("houseId");
-      if (!regionId || !dsoId || !streetId || !houseId) {
-        return new Response(
-          JSON.stringify({ error: "regionId, dsoId, streetId, and houseId are required" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+      case "houses": {
+        const streetId = params.get("streetId");
+        const query = params.get("query");
+        if (!regionId || !dsoId || !streetId || !query) {
+          return jsonError("regionId, dsoId, streetId, and query are required", 400);
+        }
+        yasnoUrl = `${YASNO_BASE}/addresses/v2/houses?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&streetId=${encodeURIComponent(streetId)}&query=${encodeURIComponent(query)}`;
+        break;
       }
-      yasnoUrl = `${YASNO_BASE}/addresses/v2/group?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&streetId=${encodeURIComponent(streetId)}&houseId=${encodeURIComponent(houseId)}`;
-    } else {
-      return new Response(
-        JSON.stringify({ error: `Unknown path: ${path}` }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      case "group": {
+        const streetId = params.get("streetId");
+        const houseId = params.get("houseId");
+        if (!regionId || !dsoId || !streetId || !houseId) {
+          return jsonError("regionId, dsoId, streetId, and houseId are required", 400);
+        }
+        yasnoUrl = `${YASNO_BASE}/addresses/v2/group?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&streetId=${encodeURIComponent(streetId)}&houseId=${encodeURIComponent(houseId)}`;
+        break;
+      }
+      default:
+        return jsonError(`Unknown endpoint: ${endpoint}`, 404);
     }
 
     const resp = await fetch(yasnoUrl, {
@@ -96,9 +92,13 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     console.error("yasno-api error:", err);
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonError(err.message, 500);
   }
 });
+
+function jsonError(message: string, status: number) {
+  return new Response(
+    JSON.stringify({ error: message }),
+    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
