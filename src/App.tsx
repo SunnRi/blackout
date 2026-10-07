@@ -9,7 +9,7 @@ import {
 import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
 import {
-  initTelegramWebApp, getTelegramUser, hapticImpact, hapticNotification,
+  initTelegramWebApp, getTelegramUser, getTelegramWebApp, hapticImpact, hapticNotification,
 } from '@/lib/telegram';
 import {
   fetchOblasts, fetchCities, fetchTodaySchedule, fetchTomorrowSchedule,
@@ -844,6 +844,7 @@ function App() {
   const tgUser = useMemo(() => getTelegramUser(), []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedCityKeyRef = useRef<string>('');
+  const lastConfirmedPrefRef = useRef<string>('');
 
   useEffect(() => { initTelegramWebApp(); }, []);
 
@@ -942,10 +943,39 @@ function App() {
       await supabase.from('user_preferences').upsert({
         tg_user_id: tgUser.id, tg_username: tgUser.username ?? null,
         oblast_slug: selectedOblast.slug,
-        city_slug: selectedCity.slug, queue_group: selectedGroup,
+        city_slug: selectedCity.slug, city_name: selectedCity.name,
+        queue_group: selectedGroup,
         notify_enabled: notifyEnabled, notify_minutes_before: notifyMinutes,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'tg_user_id' });
+      // Ask the bot to confirm the choice in the chat, so the user does not
+      // have to pick city/queue there again. Only on an actual city/queue
+      // change, not on every notification-settings tweak.
+      const prefKey = `${selectedOblast.slug}|${selectedCity.slug}|${selectedGroup}`;
+      if (lastConfirmedPrefRef.current === prefKey) {
+        setSaved(true); hapticNotification('success');
+        setTimeout(() => setSaved(false), 2000);
+        return;
+      }
+      lastConfirmedPrefRef.current = prefKey;
+      const tg = getTelegramWebApp();
+      if (tg?.initData) {
+        try {
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-bot`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              action: 'prefs_saved',
+              initData: tg.initData,
+              city: selectedCity.name,
+              queue: selectedGroup,
+            }),
+          });
+        } catch { /* confirmation is best-effort */ }
+      }
       setSaved(true); hapticNotification('success');
       setTimeout(() => setSaved(false), 2000);
     }, 1500);

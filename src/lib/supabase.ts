@@ -13,6 +13,7 @@ export type UserPreferences = {
   notify_minutes_before: number;
   oblast_slug: string | null;
   city_slug: string | null;
+  city_name: string | null;
   queue_group: string | null;
 };
 

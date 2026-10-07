@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { createHmac } from "node:crypto";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,10 +54,60 @@ type TGUpdate = {
 type UserPref = {
   oblast_slug: string | null;
   city_slug: string | null;
+  city_name: string | null;
   queue_group: string | null;
   notify_enabled: boolean;
   notify_minutes_before: number;
 };
+
+// ── Mini app → bot confirmation (Telegram initData verification) ──
+type MiniAppConfirm = {
+  action: "prefs_saved";
+  initData: string;
+  city: string;
+  queue: string;
+};
+
+function verifyInitData(initData: string): TGUser | null {
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  if (!hash) return null;
+  params.delete("hash");
+  const dataCheckString = [...params.entries()]
+    .map(([k, v]) => `${k}=${v}`)
+    .sort()
+    .join("\n");
+  const secretKey = createHmac("sha256", "WebAppData").update(BOT_TOKEN).digest();
+  const computed = createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
+  if (computed !== hash) return null;
+  try {
+    const userRaw = params.get("user");
+    if (!userRaw) return null;
+    return JSON.parse(userRaw) as TGUser;
+  } catch {
+    return null;
+  }
+}
+
+async function handlePrefsSaved(confirm: MiniAppConfirm) {
+  const user = verifyInitData(confirm.initData);
+  if (!user) return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
+    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+  const queue = String(confirm.queue).replace(/[<>&]/g, "");
+  const city = String(confirm.city).replace(/[<>&]/g, "");
+  await sendMessage(
+    user.id,
+    `✅ <b>Налаштування збережено</b>\n\n` +
+      `📍 Місто: <b>${city}</b>\n` +
+      `🔢 Черга: <b>${queue}</b>\n\n` +
+      `Графік у боті та веб-додатку тепер однаковий. Коли світло вимкнуть, я попереджу заздалегідь 🔔`,
+    mainKeyboard,
+  );
+  return new Response(JSON.stringify({ ok: true }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 // ── Telegram helpers ──────────────────────────────────────────
 async function tgCall(method: string, body: Record<string, unknown>) {
@@ -229,7 +280,7 @@ async function fetchTomorrowSlots(
 async function getUserPref(tgUserId: number): Promise<UserPref | null> {
   const { data } = await supabase
     .from("user_preferences")
-    .select("oblast_slug, city_slug, queue_group, notify_enabled, notify_minutes_before")
+    .select("oblast_slug, city_slug, city_name, queue_group, notify_enabled, notify_minutes_before")
     .eq("tg_user_id", tgUserId)
     .maybeSingle();
   return (data as UserPref) ?? null;
@@ -485,6 +536,13 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    if (req.method === "POST") {
+      const body = await req.json().catch(() => null);
+      if (body && typeof body === "object" && (body as MiniAppConfirm).action === "prefs_saved") {
+        return await handlePrefsSaved(body as MiniAppConfirm);
+      }
+    }
+
     if (req.method === "GET") {
       const url = new URL(req.url);
       if (url.searchParams.get("setup") === "true") {
