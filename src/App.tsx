@@ -1171,6 +1171,7 @@ function App() {
           }
           if (prefs.city_slug && prefs.queue_group) {
             if (prefs.city_name) setSelectedCity({ slug: prefs.city_slug, name: prefs.city_name });
+            setSelectedGroup(prefs.queue_group);
             setOnboarded(true);
             localStorage.setItem('onboarded', '1');
           }
