@@ -518,7 +518,7 @@ function OptionList<T extends string>({ options, value, onChange }: {
 // ── Onboarding ────────────────────────────────────────────────
 function Onboarding({
   step, setStep, cities, selectedCity, setSelectedCity, selectedGroup, setSelectedGroup,
-  design, setDesign, density, setDensity, onFinish, scheduleLoading, availableGroups,
+  onFinish, scheduleLoading, availableGroups,
 }: {
   step: number;
   setStep: (n: number) => void;
@@ -527,10 +527,6 @@ function Onboarding({
   setSelectedCity: (c: City) => void;
   selectedGroup: string;
   setSelectedGroup: (g: string) => void;
-  design: Design;
-  setDesign: (d: Design) => void;
-  density: Density;
-  setDensity: (d: Density) => void;
   onFinish: () => void;
   scheduleLoading: boolean;
   availableGroups: string[];
@@ -542,7 +538,7 @@ function Onboarding({
     return cities.filter((c) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
   }, [cities, citySearch]);
 
-  const totalSteps = 5;
+  const totalSteps = 3;
 
   return (
     <div className="relative min-h-screen bg-primary-c" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -632,31 +628,6 @@ function Onboarding({
             </div>
           )}
 
-          {step === 3 && (
-            <div className="flex flex-1 flex-col fade-in-right">
-              <div className="mb-1 flex items-center gap-2">
-                <Eye className="h-6 w-6 accent-c" />
-                <h2 className="text-2xl font-extrabold text-primary-c">Що показувати</h2>
-              </div>
-              <p className="mb-4 mt-1 text-sm text-secondary-c">Оберіть обсяг інформації на головному екрані</p>
-              <div className="flex-1 overflow-y-auto">
-                <OptionList options={DENSITY_OPTIONS} value={density} onChange={setDensity} />
-              </div>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div className="flex flex-1 flex-col fade-in-right">
-              <div className="mb-1 flex items-center gap-2">
-                <Palette className="h-6 w-6 accent-c" />
-                <h2 className="text-2xl font-extrabold text-primary-c">Дизайн</h2>
-              </div>
-              <p className="mb-4 mt-1 text-xs text-secondary-c">Як виглядає додаток. Можна змінити пізніше в налаштуваннях.</p>
-              <div className="flex-1 overflow-y-auto">
-                <OptionList options={DESIGN_OPTIONS} value={design} onChange={setDesign} />
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="mx-auto mt-6 flex w-full gap-2">
@@ -671,15 +642,15 @@ function Onboarding({
           )}
           <button
             onClick={() => {
-              if (step === 4) { onFinish(); hapticNotification('success'); }
+              if (step === 2) { onFinish(); hapticNotification('success'); }
               else { setStep(step + 1); hapticImpact('light'); }
             }}
             disabled={(step === 1 && !selectedCity) || (step === 2 && !selectedGroup)}
             className="flex flex-1 items-center justify-center gap-2 rounded-2xl accent-bg py-4 text-base font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] disabled:opacity-40"
           >
             {step === 0 && <>Почнемо <ArrowRight className="h-5 w-5" /></>}
-            {(step === 1 || step === 2 || step === 3) && <>Далі <ArrowRight className="h-5 w-5" /></>}
-            {step === 4 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
+            {step === 1 && <>Далі <ArrowRight className="h-5 w-5" /></>}
+            {step === 2 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
           </button>
         </div>
       </div>
@@ -834,8 +805,6 @@ function App() {
           cities={cities}
           selectedCity={selectedCity} setSelectedCity={setSelectedCity}
           selectedGroup={selectedGroup} setSelectedGroup={setSelectedGroup}
-          design={design} setDesign={setDesign}
-          density={density} setDensity={setDensity}
           scheduleLoading={scheduleLoading} availableGroups={availableGroups}
           onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); }}
         />
@@ -1010,6 +979,24 @@ function App() {
               </div>
             )}
 
+            {/* Design */}
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Palette className="h-4 w-4 accent-c" />
+                <h3 className="text-base font-bold text-primary-c">Дизайн</h3>
+              </div>
+              <OptionList options={DESIGN_OPTIONS} value={design} onChange={setDesign} />
+            </div>
+
+            {/* Density */}
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Eye className="h-4 w-4 accent-c" />
+                <h3 className="text-base font-bold text-primary-c">Що показувати</h3>
+              </div>
+              <OptionList options={DENSITY_OPTIONS} value={density} onChange={setDensity} />
+            </div>
+
             {/* Theme */}
             <div>
               <h3 className="mb-2 text-base font-bold text-primary-c">Тема</h3>
@@ -1024,24 +1011,6 @@ function App() {
                   </button>
                 ))}
               </div>
-            </div>
-
-            {/* Density */}
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <Eye className="h-4 w-4 accent-c" />
-                <h3 className="text-base font-bold text-primary-c">Що показувати</h3>
-              </div>
-              <OptionList options={DENSITY_OPTIONS} value={density} onChange={setDensity} />
-            </div>
-
-            {/* Design */}
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <Palette className="h-4 w-4 accent-c" />
-                <h3 className="text-base font-bold text-primary-c">Дизайн</h3>
-              </div>
-              <OptionList options={DESIGN_OPTIONS} value={design} onChange={setDesign} />
             </div>
 
             {/* City */}
