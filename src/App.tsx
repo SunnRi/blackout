@@ -818,6 +818,7 @@ function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
   const [density, setDensity] = useState<Density>(getInitialDensity);
   const [onboarded, setOnboarded] = useState<boolean>(() => localStorage.getItem('onboarded') === '1');
+  const [prefsChecked, setPrefsChecked] = useState(() => !getTelegramUser());
   const [obStep, setObStep] = useState(0);
 
   const [oblasts, setOblasts] = useState<Oblast[]>([]);
@@ -891,6 +892,31 @@ function App() {
       .finally(() => setCitiesLoading(false));
   }, [selectedOblast]);
 
+  // Load saved settings right away: if the user already picked a city and queue,
+  // restore them and skip onboarding even when the local flag was lost.
+  useEffect(() => {
+    if (!tgUser || oblasts.length === 0) return;
+    let cancelled = false;
+    supabase.from('user_preferences').select('*').eq('tg_user_id', tgUser.id).maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) { setPrefsChecked(true); return; }
+        const prefs = data as UserPreferences;
+        setNotifyEnabled(prefs.notify_enabled);
+        setNotifyMinutes(prefs.notify_minutes_before);
+        if (prefs.oblast_slug) {
+          const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug);
+          if (oblast) setSelectedOblast(oblast);
+        }
+        if (prefs.city_slug && prefs.queue_group) {
+          setOnboarded(true);
+          localStorage.setItem('onboarded', '1');
+        }
+        setPrefsChecked(true);
+      });
+    return () => { cancelled = true; };
+  }, [tgUser, oblasts]);
+
+  // Merge DB queue/city once cities arrive, without touching onboarding state.
   useEffect(() => {
     if (!tgUser || !onboarded || cities.length === 0) return;
     supabase.from('user_preferences').select('*').eq('tg_user_id', tgUser.id).maybeSingle()
@@ -983,6 +1009,15 @@ function App() {
   }, [cities, citySearchSettings]);
 
   if (loading) return (
+    <div className="flex min-h-screen items-center justify-center bg-primary-c">
+      <div className="text-center">
+        <Loader2 className="mx-auto h-9 w-9 animate-spin accent-c" />
+        <p className="mt-2 text-sm text-secondary-c">Завантаження...</p>
+      </div>
+    </div>
+  );
+
+  if (!prefsChecked) return (
     <div className="flex min-h-screen items-center justify-center bg-primary-c">
       <div className="text-center">
         <Loader2 className="mx-auto h-9 w-9 animate-spin accent-c" />
