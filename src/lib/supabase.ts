@@ -24,4 +24,6 @@ export type ScheduleChange = {
   change_type: string;
   summary: string;
   detected_at: string;
+  old_slots?: unknown;
+  new_slots?: unknown;
 };

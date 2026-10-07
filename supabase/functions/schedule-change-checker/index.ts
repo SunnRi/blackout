@@ -179,6 +179,7 @@ async function checkCity(
   const changes: {
     oblast_slug: string; city_slug: string; queue: string; day: string;
     change_type: string; summary: string;
+    old_slots: Slot[] | null; new_slots: Slot[] | null;
   }[] = [];
   const userNotifs: { tg_user_id: number; day: string; queue: string; summary: string }[] = [];
   const upserts: {
@@ -205,6 +206,7 @@ async function checkCity(
           oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, day,
           change_type: "changed",
           summary,
+          old_slots: prevSlots, new_slots: sched.slots,
         });
         for (const f of followers) {
           if (f.queue_group === sched.queue && f.notify_enabled) {
@@ -222,6 +224,7 @@ async function checkCity(
           oblast_slug: oblastSlug, city_slug: citySlug, queue: snap.queue, day,
           change_type: "removed",
           summary: "Графік для цієї черги більше не публікується",
+          old_slots: null, new_slots: null,
         });
         upserts.push({ oblast_slug: oblastSlug, city_slug: citySlug, queue: snap.queue, day, fingerprint: "" });
       }
@@ -239,34 +242,47 @@ async function checkCity(
       .from("schedule_change_log")
       .insert(changes);
     if (error) throw new Error(`change log insert: ${error.message}`);
+  }
+  // City-level check state: powers the honest "last checked" label and the
+  // unread red dot in the mini app.
+  const nowIso = new Date().toISOString();
+  const { error: stateErr } = await supabase
+    .from("schedule_check_state")
+    .upsert({
+      oblast_slug: oblastSlug,
+      city_slug: citySlug,
+      last_checked_at: nowIso,
+      ...(changes.length > 0 ? { last_change_at: nowIso } : {}),
+    }, { onConflict: "oblast_slug,city_slug" });
+  if (stateErr) throw new Error(`check state upsert: ${stateErr.message}`);
 
-    // Push change notifications to affected followers
-    if (BOT_TOKEN && userNotifs.length > 0) {
-      const dayLabel = (d: string) => d === "today" ? "сьогодні" : "завтра";
-      for (const n of userNotifs) {
-        const text =
-          `🔄 <b>Графік змінився</b>\n\n` +
-          `Черга <b>${n.queue}</b> · ${dayLabel(n.day)}\n` +
-          `${n.summary}\n\n` +
-          `Відкрийте додаток, щоб побачити новий графік 👇`;
-        try {
-          await fetch(`${TELEGRAM_API}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: n.tg_user_id,
-              text,
-              parse_mode: "HTML",
-              reply_markup: {
-                inline_keyboard: [[
-                  { text: "⚡️ Відкрити графік", web_app: { url: MINI_APP_URL } },
-                ]],
-              },
-            }),
-          });
-        } catch (sendErr) {
-          console.error(`notify user ${n.tg_user_id} failed:`, sendErr);
-        }
+  // Push a short heads-up to affected followers: the visual diff lives in the
+  // mini app, the message just tells them to check it.
+  if (BOT_TOKEN && userNotifs.length > 0) {
+    const seen = new Set<number>();
+    for (const n of userNotifs) {
+      if (seen.has(n.tg_user_id)) continue;
+      seen.add(n.tg_user_id);
+      const text =
+        `🔔 <b>Оновлення графіків</b>\n\n` +
+        `У вашому місті змінили графік відключень.\n` +
+        `Відкрийте додаток, щоб побачити що саме змінилося 👇`;
+      try {
+        await fetch(`${TELEGRAM_API}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: n.tg_user_id,
+            text,
+            reply_markup: {
+              inline_keyboard: [[
+                { text: "⚡️ Переглянути оновлення", web_app: { url: MINI_APP_URL } },
+              ]],
+            },
+          }),
+        });
+      } catch (sendErr) {
+        console.error(`notify user ${n.tg_user_id} failed:`, sendErr);
       }
     }
   }

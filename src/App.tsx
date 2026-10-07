@@ -3,7 +3,7 @@ import {
   Zap, ZapOff, MapPin, Loader2, CheckCircle2,
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, Clock, Info, X,
-  Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
+  Sparkles, ArrowRight, ArrowLeft, ArrowDown, Check, RefreshCw, Keyboard,
   LayoutGrid, Gauge, Layers, Eye, History,
 } from 'lucide-react';
 import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
@@ -702,10 +702,25 @@ function Onboarding({
 }
 
 // ── Change history ────────────────────────────────────────────
+type DiffSlot = { start: number; end: number; type: string };
 type ChangeGroup = {
   detectedAt: string;
-  items: { queue: string; day: string; changeType: string; summary: string }[];
+  items: { queue: string; day: string; changeType: string; summary: string; oldSlots: DiffSlot[] | null; newSlots: DiffSlot[] | null }[];
 };
+
+function parseSlotRows(json: unknown): DiffSlot[] {
+  if (!Array.isArray(json)) return [];
+  return json
+    .map((s) => s as Partial<DiffSlot>)
+    .filter((s) => typeof s.start === 'number' && typeof s.end === 'number' && typeof s.type === 'string')
+    .map((s) => ({ start: s.start as number, end: s.end as number, type: s.type as string }));
+}
+
+function formatMinutes(min: number): string {
+  const h = Math.floor(min / 60) % 24;
+  const m = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
 
 function formatChangeTime(iso: string): string {
   const d = new Date(iso);
@@ -726,6 +741,55 @@ function formatDayLabel(day: string): string {
   return day === 'today' ? 'сьогодні' : 'завтра';
 }
 
+const isOffSlot = (s: DiffSlot) => s.type === 'Definite' || s.type === 'off';
+
+// One before/after day row: two horizontal 24h bars (was → now) with the
+// outage segments painted on, plus tick labels at the boundaries.
+function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: DiffSlot[] }) {
+  const Bar = ({ slots, label }: { slots: DiffSlot[]; label: string }) => {
+    const off = slots.filter(isOffSlot);
+    const marks = [...off.map((s) => s.start), ...off.map((s) => s.end)]
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort((a, b) => a - b);
+    return (
+      <div>
+        <div className="mb-0.5 text-[10px] font-semibold text-muted-c">{label}</div>
+        <div className="relative h-4 w-full overflow-hidden rounded-md bg-emerald-500/25">
+          {off.map((s, i) => (
+            <div
+              key={i}
+              className="absolute top-0 h-full bg-rose-500"
+              style={{ left: `${(s.start / 1440) * 100}%`, width: `${Math.max(((s.end - s.start) / 1440) * 100, 1)}%` }}
+            />
+          ))}
+        </div>
+        <div className="relative mt-0.5 h-3">
+          {marks.map((m, i) => (
+            <span
+              key={i}
+              className="absolute -translate-x-1/2 text-[9px] leading-none text-muted-c tabular-nums"
+              style={{ left: `${(m / 1440) * 100}%` }}
+            >{formatMinutes(m)}</span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="mt-2 space-y-2 rounded-xl bg-black/4 p-2.5 dark:bg-white/6">
+      <Bar slots={oldSlots} label="Було" />
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-c">
+        <ArrowDown className="h-3 w-3" /> Стало
+      </div>
+      <Bar slots={newSlots} label="" />
+      <div className="flex items-center gap-3 pt-0.5 text-[10px] text-muted-c">
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-rose-500" /> без світла</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-500/60" /> світло є</span>
+      </div>
+    </div>
+  );
+}
+
 function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug: string }) {
   const [groups, setGroups] = useState<ChangeGroup[] | null>(null);
   const [error, setError] = useState(false);
@@ -735,7 +799,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
     setGroups(null); setError(false);
     supabase
       .from('schedule_change_log')
-      .select('id, queue, day, change_type, summary, detected_at')
+      .select('id, queue, day, change_type, summary, detected_at, old_slots, new_slots')
       .eq('oblast_slug', oblastSlug)
       .eq('city_slug', citySlug)
       .order('detected_at', { ascending: false })
@@ -746,20 +810,22 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
         for (const r of (data ?? []) as ScheduleChange[]) {
           let g = byTime.get(r.detected_at);
           if (!g) { g = { detectedAt: r.detected_at, items: [] }; byTime.set(r.detected_at, g); }
-          g.items.push({ queue: r.queue, day: r.day, changeType: r.change_type, summary: r.summary });
+          g.items.push({
+            queue: r.queue, day: r.day, changeType: r.change_type, summary: r.summary,
+            oldSlots: parseSlotRows(r.old_slots), newSlots: parseSlotRows(r.new_slots),
+          });
         }
         setGroups([...byTime.values()]);
       });
     supabase
-      .from('schedule_snapshots')
-      .select('updated_at')
+      .from('schedule_check_state')
+      .select('last_checked_at')
       .eq('oblast_slug', oblastSlug)
       .eq('city_slug', citySlug)
-      .order('updated_at', { ascending: false })
-      .limit(1)
+      .maybeSingle()
       .then(({ data }) => {
-        const row = (data ?? [])[0] as { updated_at: string } | undefined;
-        setLastChecked(row?.updated_at ?? null);
+        const row = data as { last_checked_at: string } | null;
+        setLastChecked(row?.last_checked_at ?? null);
       });
   }, [oblastSlug, citySlug]);
 
@@ -814,7 +880,11 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
                   <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
                   <span className="text-[10px] text-muted-c">{formatDayLabel(it.day)}</span>
                 </div>
-                <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
+                {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
+                  <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
+                ) : (
+                  <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
+                )}
               </div>
             ))}
           </div>
@@ -860,6 +930,41 @@ function App() {
   const tgUser = useMemo(() => getTelegramUser(), []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedCityKeyRef = useRef<string>('');
+
+  // Red dot on the history button: set when the latest change for this city is
+  // newer than the last time the user opened the changes tab.
+  const [unseenChanges, setUnseenChanges] = useState(false);
+  const lastSeenChangeRef = useRef<string>(localStorage.getItem('lastSeenChangeAt') ?? '');
+
+  useEffect(() => {
+    if (!selectedOblast || !selectedCity) return;
+    let cancelled = false;
+    const fetchState = () => {
+      supabase
+        .from('schedule_check_state')
+        .select('last_change_at')
+        .eq('oblast_slug', selectedOblast.slug)
+        .eq('city_slug', selectedCity.slug)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (cancelled) return;
+          const latest = (data as { last_change_at: string | null } | null)?.last_change_at ?? '';
+          setUnseenChanges(Boolean(latest) && latest > (lastSeenChangeRef.current ?? ''));
+        });
+    };
+    fetchState();
+    const interval = setInterval(fetchState, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [selectedOblast, selectedCity]);
+
+  // Opening the changes tab marks everything as seen.
+  useEffect(() => {
+    if (view !== 'changes') return;
+    const ts = new Date().toISOString();
+    lastSeenChangeRef.current = ts;
+    localStorage.setItem('lastSeenChangeAt', ts);
+    setUnseenChanges(false);
+  }, [view]);
 
   useEffect(() => { initTelegramWebApp(); }, []);
 
@@ -1162,9 +1267,15 @@ function App() {
               )}
               {view === 'schedule' && selectedCity && (
                 <button onClick={() => { setView('changes'); hapticImpact('light'); }}
-                  className="d-btn flex h-9 w-9 items-center justify-center rounded-full"
+                  className="relative d-btn flex h-9 w-9 items-center justify-center rounded-full"
                   aria-label="Оновлення графіка" title="Оновлення графіка">
                   <History className="h-4 w-4 accent-c" />
+                  {unseenChanges && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
+                    </span>
+                  )}
                 </button>
               )}
               {view === 'schedule' && (
