@@ -296,6 +296,10 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
 }) {
   const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
   const sorted = useMemo(() => [...slots].sort((a, b) => a.start - b.start), [slots]);
+  const slots24 = useMemo(() => Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    status: getHourStatus(sorted, hour),
+  })), [sorted]);
   const relUpdate = getRelativeUpdate(updated);
   return (
     <div className="fade-in-delay-2">
@@ -318,53 +322,69 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
       </div>
 
       <div className="d-card graph-aura p-3">
-        <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(24, 1fr)' }}>
-          {Array.from({ length: 24 }, (_, hour) => {
-            const status = getHourStatus(sorted, hour);
+        <div className="flex h-14 items-end gap-[2px]" style={{ padding: '0 1px' }}>
+          {slots24.map(({ hour, status }) => {
             const isCurrent = isToday && currentMin >= hour * 60 && currentMin < (hour + 1) * 60;
             const isPast = isToday && currentMin >= (hour + 1) * 60;
 
-            let barClass = 'bar-green';
-            if (status === 'off') barClass = 'bar-red';
-            else if (status === 'partial') barClass = 'bar-red-soft';
+            let barClass = 'tl-on';
+            if (status === 'off') barClass = 'tl-off';
+            else if (status === 'partial') barClass = 'tl-partial';
+            const heightPct = status === 'on' ? 100 : status === 'partial' ? 62 : 78;
 
             return (
-              <div key={hour} className="graph-col flex flex-col items-center gap-1"
+              <div key={hour} className="graph-col flex h-full flex-1 flex-col justify-end"
                 data-tip={`${String(hour).padStart(2, '0')}:00 · ${status === 'on' ? 'є світло' : status === 'off' ? 'без світла' : 'частково'}`}>
                 <div
-                  className={`graph-bar-anim bar-shine relative w-full rounded-md ${barClass} ${status === 'off' ? 'bar-red-live' : ''} ${isPast ? 'opacity-30' : ''} ${isCurrent ? 'glow-ring' : ''}`}
-                  style={{ height: '44px', animationDelay: `${hour * 0.03}s` }}
-                >
-                  {isCurrent && (
-                    <div className="absolute -top-1.5 left-1/2 now-marker">
-                      <div className="h-2 w-2 rounded-full bg-blue-500 shadow-lg shadow-blue-500/60" />
-                    </div>
-                  )}
-                </div>
-                <span className={`text-[8px] font-medium ${isCurrent ? 'font-bold text-blue-500' : 'text-muted-c'}`}>
-                  {hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}
-                </span>
+                  className={`graph-bar-anim bar-shine relative w-full rounded-t-md ${barClass} ${isPast ? 'tl-past' : ''}`}
+                  style={{ height: `${heightPct}%`, animationDelay: `${hour * 0.03}s` }}
+                />
               </div>
             );
           })}
         </div>
-
-                {showStats && isToday && (
-          <div className="mt-3 border-t border-subtle-c pt-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-muted-c">Прогрес дня</span>
-              <span className="text-[11px] font-semibold text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {minutesToTime(currentMin)} з 24:00
-              </span>
+        <div className="relative mt-1.5 h-3">
+          <div className="absolute inset-x-0 top-1/2 h-px bg-subtle-c" style={{ borderTop: '1px solid var(--border-subtle)' }} />
+          {isToday && currentMin >= 0 && (
+            <div
+              className="tl-now absolute top-0 z-10"
+              style={{ left: `${(currentMin / 1440) * 100}%` }}
+            >
+              <div className="-translate-x-1/2 rounded-full bg-blue-500 px-1.5 py-px text-[8px] font-bold text-white shadow-lg shadow-blue-500/50">
+                {minutesToTime(currentMin)}
+              </div>
+              <div className="mx-auto h-2.5 w-0.5 rounded-full bg-blue-500" />
             </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
-              <div
-                className="day-progress h-full rounded-full"
-                style={{ width: `${(currentMin / 1440) * 100}%` }}
-              />
-            </div>
+          )}
+          <div className="flex justify-between pt-0.5">
+            {[0, 6, 12, 18].map((h) => (
+              <span key={h} className="text-[8px] font-medium text-muted-c">{String(h).padStart(2, '0')}</span>
+            ))}
+            <span className="text-[8px] font-medium text-muted-c">24</span>
           </div>
-        )}
+        </div>
+
+        {showStats && isToday && (() => {
+          let offMins = 0;
+          for (const s of sorted) {
+            if (s.type !== 'Definite') continue;
+            const overlapStart = Math.max(s.start, 0);
+            const overlapEnd = Math.min(s.end, 1440);
+            if (overlapEnd > overlapStart) offMins += overlapEnd - overlapStart;
+          }
+          return (
+            <div className="mt-2.5 flex items-center justify-between border-t border-subtle-c pt-2">
+              <span className="text-[10px] text-muted-c">
+                Сьогодні без світла: <b className="text-primary-c">{formatHours(offMins)}</b>
+              </span>
+              {relUpdate && (
+                <span className="flex items-center gap-1 text-[10px] text-muted-c">
+                  <Clock className="h-3 w-3" />{relUpdate}
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {updated && isToday && relUpdate && (
