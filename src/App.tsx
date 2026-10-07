@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Zap, ZapOff, MapPin, Loader2, CheckCircle2,
   Bell, BellOff, ChevronLeft, Search, Settings,
-  Sun, Moon, AlertTriangle, Clock, Info, X,
+  Sun, Moon, Clock, Info, X,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
-  LayoutGrid, Gauge, Layers, Eye, History, Gift,
+  LayoutGrid, Gauge, Layers, Eye, History,
 } from 'lucide-react';
 import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -15,7 +15,6 @@ import {
   fetchOblasts, fetchCities, fetchTodaySchedule, fetchTomorrowSchedule,
   minutesToTime, type Oblast, type City, type Slot, type CitySchedule,
 } from '@/lib/yasno-api';
-import { APP_UPDATES, getUnseenUpdate, markUpdateSeen, type AppUpdate } from '@/lib/app-updates';
 
 const ALL_GROUPS = ['1.1','1.2','2.1','2.2','3.1','3.2','4.1','4.2','5.1','5.2','6.1','6.2'];
 
@@ -116,21 +115,6 @@ function getInitialThemeMode(): ThemeMode {
 function getInitialDensity(): Density {
   if (typeof window === 'undefined') return 'standard';
   return (localStorage.getItem('density') as Density) || 'standard';
-}
-
-// ── Emergency Banner ──────────────────────────────────────────
-function EmergencyBanner({ onDismiss }: { onDismiss: () => void }) {
-  return (
-    <div className="fade-in flex items-center gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 pulse-amber">
-      <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
-      <p className="flex-1 text-sm text-amber-700 dark:text-amber-200/90">
-        <b>Аварійний режим.</b> Звичайний графік може не діяти.
-      </p>
-      <button onClick={onDismiss} className="shrink-0 text-amber-500/60 hover:opacity-70">
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  );
 }
 
 // ── Aurora background (glass design) ──────────────────────────
@@ -763,44 +747,8 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
   );
 }
 
-// ─── What's new ──────────────────────────────────────────────
-function WhatsNew({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fade-in space-y-3">
-      {APP_UPDATES.map((u: AppUpdate, idx: number) => (
-        <div key={u.version} className={`d-card px-4 py-3.5 ${idx === 0 ? 'ring-1 ring-blue-500/25' : ''}`}>
-          <div className="mb-2 flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full accent-soft-bg">
-              <Gift className="h-3.5 w-3.5 accent-c" />
-            </span>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-primary-c">{u.title}</p>
-              <p className="text-[11px] text-muted-c">Версія {u.version} · {u.date}</p>
-            </div>
-            {idx === 0 && (
-              <span className="rounded-full accent-bg px-2 py-0.5 text-[10px] font-bold text-white">Нове</span>
-            )}
-          </div>
-          <ul className="space-y-1.5">
-            {u.items.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs leading-relaxed text-secondary-c">
-                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: 'var(--on-positive)' }} />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-      <button
-        onClick={onClose}
-        className="w-full rounded-xl accent-bg px-4 py-2.5 text-center text-sm font-bold text-white shadow-sm transition-all hover:scale-[1.02]"
-      >Чудово, до графіка</button>
-    </div>
-  );
-}
-
 // ─── Main App ─────────────────────────────────────────────────
-type View = 'schedule' | 'changes' | 'settings' | 'whats-new';
+type View = 'schedule' | 'changes' | 'settings';
 type DayTab = 'today' | 'tomorrow';
 
 function App() {
@@ -824,10 +772,8 @@ function App() {
   const [tomorrowSchedule, setTomorrowSchedule] = useState<CitySchedule | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [showEmergency, setShowEmergency] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
   const [citySearchSettings, setCitySearchSettings] = useState('');
-  const [whatsNewUnseen, setWhatsNewUnseen] = useState(() => getUnseenUpdate() !== null);
 
   const [notifyEnabled, setNotifyEnabled] = useState(true);
   const [notifyMinutes, setNotifyMinutes] = useState(60);
@@ -1004,42 +950,25 @@ function App() {
                   <ChevronLeft className="h-5 w-5 text-primary-c" />
                 </button>
               )}
-              {view === 'whats-new' && (
-                <button onClick={() => { setView('schedule'); hapticImpact('light'); }}
-                  className="d-btn flex h-9 w-9 items-center justify-center rounded-full">
-                  <ChevronLeft className="h-5 w-5 text-primary-c" />
-                </button>
-              )}
               <div className="flex h-10 w-10 items-center justify-center rounded-xl accent-bg shadow-sm">
                 <Zap className="h-5 w-5 text-white" />
               </div>
               <div>
                 <h1 className="text-lg font-bold leading-tight text-primary-c">
-                  {view === 'schedule' ? 'Графік світла'
-                    : view === 'changes' ? 'Оновлення графіка'
-                    : view === 'whats-new' ? 'Що нового'
-                    : 'Налаштування'}
+                  {view === 'schedule' ? 'Графік світла' : view === 'changes' ? 'Оновлення графіка' : 'Налаштування'}
                 </h1>
-                {selectedCity && view !== 'settings' && view !== 'whats-new' ? (
+                {selectedCity && view !== 'settings' ? (
                   <button onClick={() => { setView('settings'); hapticImpact('light'); }}
                     className="flex items-center gap-1 text-xs accent-c">
                     <MapPin className="h-3 w-3" />
                     {selectedCity.name}{selectedGroup && ` · ${selectedGroup}`}
                   </button>
-                ) : !selectedCity && view !== 'settings' && view !== 'whats-new' ? (
+                ) : !selectedCity && view !== 'settings' ? (
                   <p className="text-xs text-secondary-c">Україна</p>
                 ) : null}
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              {whatsNewUnseen && view === 'schedule' && (
-                <button onClick={() => { setView('whats-new'); hapticImpact('light'); }}
-                  className="d-btn relative flex h-9 w-9 items-center justify-center rounded-full"
-                  aria-label="Що нового" title="Що нового">
-                  <Gift className="h-4 w-4 accent-c" />
-                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
-                </button>
-              )}
               <button
                 onClick={() => {
                   setThemeMode(themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto');
@@ -1123,8 +1052,6 @@ function App() {
               </div>
             ) : (
               <>
-                {showEmergency && <div className="mb-3"><EmergencyBanner onDismiss={() => { setShowEmergency(false); hapticImpact('light'); }} /></div>}
-
                 {/* Auto-refresh info */}
                 <div className="mb-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-c">
                   <RefreshCw className="h-3 w-3" />
@@ -1188,22 +1115,6 @@ function App() {
               </>
             )}
           </>
-        )}
-
-        {/* ── WHAT'S NEW VIEW ── */}
-        {view === 'whats-new' && (
-          <div className="fade-in">
-            <WhatsNew onClose={() => {
-              markUpdateSeen(); setWhatsNewUnseen(false);
-              setView('schedule'); hapticImpact('light');
-            }} />
-            <button
-              onClick={() => { setView('schedule'); hapticImpact('light'); }}
-              className="d-btn mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-secondary-c transition-all hover:scale-[1.01]"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" /> До графіка
-            </button>
-          </div>
         )}
 
         {/* ── CHANGES VIEW ── */}
