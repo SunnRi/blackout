@@ -780,7 +780,7 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
             <Minus className="h-4 w-4" style={{ color: 'var(--on-positive)' }} />
           </span>
           <span className="text-sm leading-snug text-primary-c">
-            <b>Світло повернуть</b> о <b style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtRange(s)}</b> — відключення скасовано
+            <b>Відключення скасовано</b> (було <b style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtRange(s)}</b>) — світло буде
           </span>
         </div>
       ))}
@@ -797,7 +797,7 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
             <Plus className="h-4 w-4" style={{ color: 'var(--on-negative)' }} />
           </span>
           <span className="text-sm leading-snug text-primary-c">
-            <b>Відключення</b> з <b style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtRange(s)}</b>
+            <b>Додали відключення</b> на <b style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtRange(s)}</b>
           </span>
         </div>
       ))}
