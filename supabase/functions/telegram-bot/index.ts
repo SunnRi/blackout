@@ -456,7 +456,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET") {
       const url = new URL(req.url);
       if (url.searchParams.get("setup") === "true") {
-        const webhookUrl = `${url.origin}/functions/v1/telegram-bot`;
+        const webhookUrl = `${url.origin.replace(/^http:/, "https:")}/functions/v1/telegram-bot`;
         const wb = await tgCall("setWebhook", { url: webhookUrl });
         const menu = await setChatMenuButton();
         return new Response(
