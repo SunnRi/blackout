@@ -136,8 +136,11 @@ function StatusLine({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const nextOn = getNextOnSlot(slots, now);
 
   return (
-    <div className={`fade-in-scale flex items-center gap-2.5 rounded-2xl px-4 py-3 ${isOff ? 'bg-red-500/8' : 'bg-emerald-500/8'}`}>
-      <div className={`h-2.5 w-2.5 shrink-0 rounded-full ${isOff ? 'bg-red-500' : 'bg-emerald-500'}`} />
+    <div className={`fade-in-scale hover-lift d-card flex items-center gap-2.5 px-4 py-3 ${isOff ? 'pulse-red' : 'pulse-green'}`}>
+      <div
+        className={`h-2.5 w-2.5 shrink-0 rounded-full ${isOff ? 'bg-red-500' : 'bg-emerald-500'}`}
+        style={{ boxShadow: isOff ? '0 0 10px rgba(255,59,48,0.7)' : '0 0 10px rgba(52,199,89,0.7)' }}
+      />
       <span className="text-sm font-semibold text-primary-c">{isOff ? 'Без світла' : 'Є світло'}</span>
       {isOff && nextOn && <span className="text-xs text-secondary-c">· увімкнуть {minutesToTime(nextOn.slot.start)}</span>}
       {!isOff && nextOutage && <span className="text-xs text-secondary-c">· відключення {minutesToTime(nextOutage.slot.start)}</span>}
@@ -153,12 +156,12 @@ function StatusCompact({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const nextOn = getNextOnSlot(slots, now);
 
   return (
-    <div className={`fade-in-scale d-card p-4 ${isOff ? 'pulse-red' : 'pulse-green'}`}>
+    <div className={`glass-sheen fade-in-scale hover-lift d-card p-4 ${isOff ? 'pulse-red' : 'pulse-green'}`}>
       <div className="flex items-center gap-3">
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${isOff ? 'bg-red-500/12' : 'bg-emerald-500/12'}`}>
           {isOff
-            ? <ZapOff className="h-5 w-5" style={{ color: 'var(--on-negative)' }} />
-            : <Zap className="h-5 w-5" style={{ color: 'var(--on-positive)' }} />}
+            ? <ZapOff className="flicker h-5 w-5" style={{ color: 'var(--on-negative)' }} />
+            : <Zap className="neon-pulse h-5 w-5" style={{ color: 'var(--on-positive)' }} />}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-base font-bold text-primary-c">
@@ -201,11 +204,11 @@ function StatusFull({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const outagesCount = slots.filter((s) => s.type === 'Definite').length;
 
   return (
-    <div className={`fade-in-scale d-card p-5 text-center ${isOff ? 'pulse-red' : 'pulse-green'}`}>
+    <div className={`glass-sheen fade-in-scale hover-lift d-card p-5 text-center ${isOff ? 'pulse-red' : 'pulse-green'}`}>
       <div className={`mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full ${isOff ? 'bg-red-500/12' : 'bg-emerald-500/12'}`}>
         {isOff
-          ? <ZapOff className="h-8 w-8" style={{ color: 'var(--on-negative)' }} />
-          : <Zap className="h-8 w-8" style={{ color: 'var(--on-positive)' }} />}
+          ? <ZapOff className="flicker h-8 w-8" style={{ color: 'var(--on-negative)' }} />
+          : <Zap className="neon-pulse h-8 w-8" style={{ color: 'var(--on-positive)' }} />}
       </div>
       <h2 className="text-xl font-bold text-primary-c">
         {isOff ? 'Світла зараз немає' : 'Світло зараз є'}
@@ -293,18 +296,11 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
             else if (status === 'partial') barClass = 'bar-red-soft';
 
             return (
-              <div key={hour} className="flex flex-col items-center gap-1">
+              <div key={hour} className="graph-col flex flex-col items-center gap-1"
+                data-tip={`${String(hour).padStart(2, '0')}:00 · ${status === 'on' ? 'є світло' : status === 'off' ? 'без світла' : 'частково'}`}>
                 <div
-                  className={`graph-bar-anim relative w-full rounded-md ${barClass} ${isPast ? 'opacity-30' : ''}`}
-                  style={{
-                    height: '44px',
-                    animationDelay: `${hour * 0.03}s`,
-                    ...(isCurrent ? {
-                      outline: '2px solid rgba(10,132,255,0.8)',
-                      outlineOffset: '1px',
-                      boxShadow: '0 0 10px rgba(10,132,255,0.35)',
-                    } : {}),
-                  }}
+                  className={`graph-bar-anim relative w-full rounded-md ${barClass} ${status === 'off' ? 'bar-red-live' : ''} ${isPast ? 'opacity-30' : ''} ${isCurrent ? 'glow-ring' : ''}`}
+                  style={{ height: '44px', animationDelay: `${hour * 0.03}s` }}
                 >
                   {isCurrent && (
                     <div className="absolute -top-1.5 left-1/2 now-marker">
@@ -378,7 +374,7 @@ function CompactList({ slots, now, isToday, limit }: { slots: Slot[]; now: KyivT
         return (
           <div
             key={`${slot.start}-${i}`}
-            className={`flex items-center gap-3 px-4 py-2.5 ${i < shown.length - 1 ? 'border-b border-subtle-c' : ''} ${
+            className={`row-hover flex items-center gap-3 px-4 py-2.5 ${i < shown.length - 1 ? 'border-b border-subtle-c' : ''} ${
               active ? (isOff ? 'bg-red-500/6' : 'bg-emerald-500/6') : isPast ? 'opacity-35' : ''
             }`}
           >
@@ -423,7 +419,7 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
         return (
           <div
             key={i}
-            className={`d-card flex items-center gap-3 px-4 py-3 ${
+            className={`d-card hover-lift flex items-center gap-3 px-4 py-3 ${
               active ? (isOff ? 'ring-1 ring-red-500/30' : 'ring-1 ring-emerald-500/30') : isPast ? 'opacity-40' : ''
             }`}
           >
@@ -947,7 +943,7 @@ function App() {
                   <ChevronLeft className="h-5 w-5 text-primary-c" />
                 </button>
               )}
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl accent-bg shadow-sm">
+              <div className="logo-glow flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 shadow-sm">
                 <Zap className="h-5 w-5 text-white" />
               </div>
               <div>
@@ -1014,10 +1010,14 @@ function App() {
 
         {/* ── SCHEDULE VIEW ── */}
         {view === 'schedule' && (
-          <>
+          <div className="relative isolate">
+            <div className="pointer-events-none absolute inset-x-0 -top-6 -z-10 flex justify-center">
+              <div className="underlay-breathe h-56 w-80 rounded-full bg-blue-500/20 blur-[90px]" />
+            </div>
+            <div className="pointer-events-none absolute -right-10 top-64 -z-10 h-40 w-40 rounded-full bg-emerald-500/15 blur-[70px]" />
             {density !== 'minimal' && (
               <div className="mb-4 text-center fade-in">
-                <span className="font-mono text-2xl font-bold tracking-tight text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{now.timeString}</span>
+                <span className="clock-glow font-mono text-2xl font-bold tracking-tight text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{now.timeString}</span>
                 <span className="ml-2 text-xs text-muted-c">Київ</span>
               </div>
             )}
@@ -1051,7 +1051,7 @@ function App() {
               <>
                 {/* Auto-refresh info */}
                 <div className="mb-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-c">
-                  <RefreshCw className="h-3 w-3" />
+                  <RefreshCw className="h-3 w-3 animate-[spin_9s_linear_infinite]" />
                   <span>Перевіряємо оновлення кожні 30 хв</span>
                 </div>
 
@@ -1069,7 +1069,9 @@ function App() {
                       >Сьогодні</button>
                       <button onClick={() => { setDayTab('tomorrow'); hapticImpact('light'); }}
                         className={`segmented-item px-5 py-1.5 text-sm font-semibold ${dayTab === 'tomorrow' ? 'active text-primary-c' : 'text-secondary-c'}`}
-                      >Завтра</button>
+                      >Завтра{tomorrowSlots.length === 0 && (
+                        <span className="ml-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400 align-middle" />
+                      )}</button>
                     </div>
                   </div>
                 )}
@@ -1136,7 +1138,7 @@ function App() {
                 </footer>
               </>
             )}
-          </>
+          </div>
         )}
 
         {/* ── CHANGES VIEW ── */}
