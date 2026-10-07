@@ -482,13 +482,14 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
 }
 
 // ── Pickers ───────────────────────────────────────────────────
-function OptionList<T extends string>({ options, value, onChange }: {
+function OptionList<T extends string>({ options, value, onChange, compact }: {
   options: { id: T; name: string; desc: string; icon: typeof Palette }[];
   value: T;
   onChange: (v: T) => void;
+  compact?: boolean;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={compact ? 'space-y-1' : 'space-y-2'}>
       {options.map((opt) => {
         const Icon = opt.icon;
         const selected = value === opt.id;
@@ -496,18 +497,20 @@ function OptionList<T extends string>({ options, value, onChange }: {
           <button
             key={opt.id}
             onClick={() => { onChange(opt.id); hapticImpact('light'); }}
-            className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-all ${
-              selected ? 'd-card ring-2 ring-blue-500/40' : 'd-btn hover:scale-[1.01]'
-            }`}
+            className={`flex w-full items-center gap-2.5 text-left transition-all ${
+              compact ? 'rounded-xl px-3 py-2' : 'rounded-2xl px-4 py-3.5'
+            } ${selected ? 'd-card ring-2 ring-blue-500/40' : 'd-btn hover:scale-[1.01]'}`}
           >
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${selected ? 'accent-soft-bg' : 'bg-black/5 dark:bg-white/10'}`}>
-              <Icon className={`h-5 w-5 ${selected ? 'accent-c' : 'text-secondary-c'}`} />
+            <div className={`flex shrink-0 items-center justify-center rounded-lg ${
+              compact ? 'h-7 w-7' : 'h-10 w-10 rounded-xl'
+            } ${selected ? 'accent-soft-bg' : 'bg-black/5 dark:bg-white/10'}`}>
+              <Icon className={`${compact ? 'h-3.5 w-3.5' : 'h-5 w-5'} ${selected ? 'accent-c' : 'text-secondary-c'}`} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className={`text-sm font-bold ${selected ? 'accent-c' : 'text-primary-c'}`}>{opt.name}</p>
-              <p className="mt-0.5 text-xs text-secondary-c">{opt.desc}</p>
+              <p className={`${compact ? 'text-xs' : 'text-sm'} font-bold ${selected ? 'accent-c' : 'text-primary-c'}`}>{opt.name}</p>
+              {!compact && <p className="mt-0.5 text-xs text-secondary-c">{opt.desc}</p>}
             </div>
-            {selected && <Check className="h-5 w-5 shrink-0 accent-c" />}
+            {selected && <Check className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} shrink-0 accent-c`} />}
           </button>
         );
       })}
@@ -582,10 +585,10 @@ function Onboarding({
                 <input
                   type="text" value={citySearch} onChange={(e) => setCitySearch(e.target.value)}
                   placeholder="Пошук міста..."
-                  className="d-btn w-full rounded-xl py-3 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="d-panel w-full rounded-xl py-3 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
-              <div className="d-btn max-h-80 flex-1 space-y-1 overflow-y-auto rounded-2xl p-2">
+              <div className="d-panel max-h-80 flex-1 space-y-1 overflow-y-auto rounded-2xl p-2">
                 {filtered.map((city) => (
                   <button
                     key={city.slug}
@@ -972,7 +975,7 @@ function App() {
 
         {/* ── SETTINGS VIEW ── */}
         {view === 'settings' && (
-          <div className="fade-in space-y-5">
+          <div className="fade-in space-y-3">
             {saved && (
               <div className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500/8 px-3 py-2 text-xs text-emerald-600 dark:text-emerald-300">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Збережено
@@ -981,31 +984,29 @@ function App() {
 
             {/* Design */}
             <div>
-              <div className="mb-2 flex items-center gap-2">
-                <Palette className="h-4 w-4 accent-c" />
-                <h3 className="text-base font-bold text-primary-c">Дизайн</h3>
-              </div>
-              <OptionList options={DESIGN_OPTIONS} value={design} onChange={setDesign} />
+              <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">
+                <Palette className="h-3.5 w-3.5 accent-c" /> Дизайн
+              </h3>
+              <OptionList options={DESIGN_OPTIONS} value={design} onChange={setDesign} compact />
             </div>
 
             {/* Density */}
             <div>
-              <div className="mb-2 flex items-center gap-2">
-                <Eye className="h-4 w-4 accent-c" />
-                <h3 className="text-base font-bold text-primary-c">Що показувати</h3>
-              </div>
-              <OptionList options={DENSITY_OPTIONS} value={density} onChange={setDensity} />
+              <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">
+                <Eye className="h-3.5 w-3.5 accent-c" /> Що показувати
+              </h3>
+              <OptionList options={DENSITY_OPTIONS} value={density} onChange={setDensity} compact />
             </div>
 
             {/* Theme */}
             <div>
-              <h3 className="mb-2 text-base font-bold text-primary-c">Тема</h3>
+              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Тема</h3>
               <div className="segmented flex w-full">
                 {(['auto', 'light', 'dark'] as ThemeMode[]).map((m) => (
                   <button
                     key={m}
                     onClick={() => { setThemeMode(m); hapticImpact('light'); }}
-                    className={`segmented-item flex-1 px-3 py-2 text-sm font-semibold ${themeMode === m ? 'active text-primary-c' : 'text-secondary-c'}`}
+                    className={`segmented-item flex-1 px-3 py-1.5 text-xs font-semibold ${themeMode === m ? 'active text-primary-c' : 'text-secondary-c'}`}
                   >
                     {m === 'auto' ? 'Авто' : m === 'light' ? 'Світла' : 'Темна'}
                   </button>
@@ -1015,45 +1016,44 @@ function App() {
 
             {/* City */}
             <div>
-              <h3 className="mb-2 text-base font-bold text-primary-c">Місто</h3>
-              <div className="relative mb-2">
+              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Місто</h3>
+              <div className="relative mb-1.5">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
                 <input
                   type="text" value={citySearchSettings} onChange={(e) => setCitySearchSettings(e.target.value)}
                   placeholder="Пошук міста..."
-                  className="d-btn w-full rounded-xl py-2.5 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
-              <div className="d-btn max-h-52 space-y-0.5 overflow-y-auto rounded-2xl p-1.5">
+              <div className="d-panel max-h-44 space-y-0.5 overflow-y-auto rounded-2xl p-1">
                 {filteredSettingsCities.map((city) => (
                   <button
                     key={city.slug}
                     onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
-                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
+                    className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-all ${
                       selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
                     }`}
                   >
-                    <MapPin className="h-4 w-4 shrink-0" />
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
                     {city.name}
                   </button>
                 ))}
-                {filteredSettingsCities.length === 0 && <p className="py-4 text-center text-sm text-muted-c">Не знайдено</p>}
+                {filteredSettingsCities.length === 0 && <p className="py-3 text-center text-xs text-muted-c">Не знайдено</p>}
               </div>
             </div>
 
             {/* Queue */}
             <div>
-              <h3 className="mb-2 text-base font-bold text-primary-c">Черга</h3>
-              <p className="mb-2 text-xs text-secondary-c">Вказана у рахунку за електроенергію</p>
+              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Черга</h3>
               {scheduleLoading ? (
-                <div className="flex items-center gap-2 py-3 text-sm text-secondary-c"><Loader2 className="h-4 w-4 animate-spin" /> Завантаження...</div>
+                <div className="flex items-center gap-2 py-2 text-sm text-secondary-c"><Loader2 className="h-4 w-4 animate-spin" /> Завантаження...</div>
               ) : (
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-6 gap-1">
                   {(availableGroups.length > 0 ? availableGroups : ALL_GROUPS).map((group) => (
                     <button
                       key={group}
                       onClick={() => { setSelectedGroup(group); hapticImpact('light'); }}
-                      className={`rounded-lg px-2 py-2.5 text-center text-sm font-bold transition-all ${
+                      className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
                         selectedGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
                       }`}
                     >{group}</button>
@@ -1064,31 +1064,31 @@ function App() {
 
             {/* Notifications */}
             {tgUser && (
-              <div className="d-card p-4">
-                <div className="mb-3 flex items-center justify-between">
+              <div className="d-card px-3.5 py-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {notifyEnabled ? <Bell className="h-4 w-4 accent-c" /> : <BellOff className="h-4 w-4 text-muted-c" />}
-                    <h3 className="text-sm font-bold text-primary-c">Сповіщення</h3>
+                    {notifyEnabled ? <Bell className="h-3.5 w-3.5 accent-c" /> : <BellOff className="h-3.5 w-3.5 text-muted-c" />}
+                    <h3 className="text-xs font-bold text-primary-c">Сповіщення</h3>
                   </div>
                   <button
                     onClick={() => { setNotifyEnabled(!notifyEnabled); hapticImpact('medium'); }}
-                    className={`relative h-6 w-10 rounded-full transition-colors ${notifyEnabled ? 'accent-bg' : 'bg-black/10 dark:bg-white/10'}`}
+                    className={`relative h-5 w-9 rounded-full transition-colors ${notifyEnabled ? 'accent-bg' : 'bg-black/10 dark:bg-white/10'}`}
                   >
                     <span
-                      className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                      style={{ transform: notifyEnabled ? 'translateX(18px)' : 'translateX(2px)' }}
+                      className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+                      style={{ transform: notifyEnabled ? 'translateX(16px)' : 'translateX(2px)' }}
                     />
                   </button>
                 </div>
                 {notifyEnabled && (
-                  <div>
-                    <p className="mb-2 text-xs text-secondary-c">Попередити за:</p>
+                  <div className="mt-2.5">
+                    <p className="mb-1.5 text-[11px] text-secondary-c">Попередити за:</p>
                     <div className="grid grid-cols-2 gap-1.5">
                       {[30, 60].map((mins) => (
                         <button
                           key={mins}
                           onClick={() => { setNotifyMinutes(mins); hapticImpact('light'); }}
-                          className={`rounded-lg px-3 py-2.5 text-center text-sm font-semibold transition-all ${
+                          className={`rounded-lg px-3 py-1.5 text-center text-xs font-semibold transition-all ${
                             notifyMinutes === mins ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c'
                           }`}
                         >{mins} хв</button>
@@ -1102,14 +1102,14 @@ function App() {
             {/* Replay onboarding */}
             <button
               onClick={() => { setObStep(0); setOnboarded(false); localStorage.removeItem('onboarded'); }}
-              className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-secondary-c transition-all hover:scale-[1.01]"
+              className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-secondary-c transition-all hover:scale-[1.01]"
             >
-              <Sparkles className="h-4 w-4" /> Пройти налаштування знову
+              <Sparkles className="h-3.5 w-3.5" /> Пройти налаштування знову
             </button>
 
             <button
               onClick={() => { setView('schedule'); hapticImpact('light'); }}
-              className="w-full rounded-xl accent-bg px-4 py-3.5 text-center text-base font-bold text-white shadow-sm transition-all hover:scale-[1.02]"
+              className="w-full rounded-xl accent-bg px-4 py-2.5 text-center text-sm font-bold text-white shadow-sm transition-all hover:scale-[1.02]"
             >Готово</button>
           </div>
         )}

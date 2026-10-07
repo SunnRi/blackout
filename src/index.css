@@ -121,13 +121,29 @@
   box-shadow: 0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
+/* Glass panel (rectangular container, e.g. scrollable lists) */
+.d-panel {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+.dark .d-panel {
+  background: rgba(40, 40, 44, 0.6);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
 /* ── Design: Classic ── */
 .design-classic .d-card {
   background: var(--bg-card-solid);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-card);
 }
-.design-classic .d-btn {
+.design-classic .d-btn,
+.design-classic .d-panel {
   background: var(--bg-card-solid);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-card);
@@ -144,7 +160,8 @@
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
-.design-neon .d-btn {
+.design-neon .d-btn,
+.design-neon .d-panel {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
