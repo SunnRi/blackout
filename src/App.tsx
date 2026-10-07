@@ -999,6 +999,7 @@ function App() {
   // newer than the last time the user opened the changes tab.
   const [unseenChanges, setUnseenChanges] = useState(false);
   const lastSeenChangeRef = useRef<string>(localStorage.getItem('lastSeenChangeAt') ?? '');
+  const [densityMenuOpen, setDensityMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedOblast || !selectedCity) return;
@@ -1309,26 +1310,48 @@ function App() {
                 }}
                 className="d-btn flex h-9 w-9 items-center justify-center rounded-full"
                 aria-label="Тема"
-                title={themeMode === 'light' ? 'Світла тема' : 'Темна тема'}
+                title={themeMode === 'light' ? 'Увімкнути темну тему' : 'Увімкнути світлу тему'}
               >
-                {themeMode === 'light' && <Sun className="h-4 w-4 text-amber-400" />}
-                {themeMode === 'dark' && <Moon className="h-4 w-4 text-slate-400" />}
+                {themeMode === 'light'
+                  ? <Moon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                  : <Sun className="h-4 w-4 text-amber-400" />}
               </button>
               {view === 'schedule' && (
-                <button
-                  onClick={() => {
-                    const idx = DENSITY_OPTIONS.findIndex((o) => o.id === density);
-                    setDensity(DENSITY_OPTIONS[(idx + 1) % DENSITY_OPTIONS.length].id);
-                    hapticImpact('light');
-                  }}
-                  className="d-btn flex h-9 w-9 items-center justify-center rounded-full"
-                  aria-label="Стиль відображення"
-                  title={`Стиль: ${DENSITY_OPTIONS.find((o) => o.id === density)?.name}`}
-                >
-                  {density === 'minimal' && <Gauge className="h-4 w-4 accent-c" />}
-                  {density === 'standard' && <LayoutGrid className="h-4 w-4 accent-c" />}
-                  {density === 'extended' && <Layers className="h-4 w-4 accent-c" />}
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => { setDensityMenuOpen((o) => !o); hapticImpact('light'); }}
+                    className={`d-btn flex h-9 w-9 items-center justify-center rounded-full ${densityMenuOpen ? 'ring-2 ring-blue-500/40' : ''}`}
+                    aria-label="Стиль відображення"
+                    title="Стиль відображення"
+                  >
+                    {density === 'minimal' && <Gauge className="h-4 w-4 accent-c" />}
+                    {density === 'standard' && <LayoutGrid className="h-4 w-4 accent-c" />}
+                    {density === 'extended' && <Layers className="h-4 w-4 accent-c" />}
+                  </button>
+                  {densityMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setDensityMenuOpen(false)} />
+                      <div className="absolute right-0 top-10 z-50 w-52 overflow-hidden rounded-xl d-panel shadow-lg fade-in">
+                        {DENSITY_OPTIONS.map((o) => (
+                          <button
+                            key={o.id}
+                            onClick={() => { setDensity(o.id); setDensityMenuOpen(false); hapticImpact('light'); }}
+                            className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+                              density === o.id ? 'accent-soft-bg' : 'hover:bg-black/5 dark:hover:bg-white/5'
+                            }`}
+                          >
+                            <o.icon className={`h-4 w-4 shrink-0 ${density === o.id ? 'accent-c' : 'text-muted-c'}`} />
+                            <span className="min-w-0">
+                              <span className={`block text-xs font-semibold ${density === o.id ? 'accent-c' : 'text-primary-c'}`}>{o.name}</span>
+                              <span className="block truncate text-[10px] text-muted-c">{o.desc}</span>
+                            </span>
+                            {density === o.id && <Check className="ml-auto h-3.5 w-3.5 shrink-0 accent-c" />}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
               {view === 'schedule' && selectedCity && (
                 <button onClick={() => { setView('changes'); hapticImpact('light'); }}
