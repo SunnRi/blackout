@@ -146,6 +146,21 @@ async function answerCallback(id: string, text?: string) {
   });
 }
 
+// Update the bot's own message in place when possible (AJAX-style),
+// fall back to a new message for commands where there is nothing to edit.
+async function sendOrUpdate(
+  chatId: number,
+  editOf: number | undefined,
+  text: string,
+  keyboard?: unknown,
+) {
+  if (editOf) {
+    const res = await editMessage(chatId, editOf, text, keyboard) as { ok?: boolean };
+    if (res?.ok) return;
+  }
+  await sendMessage(chatId, text, keyboard);
+}
+
 function setChatMenuButton() {
   return tgCall("setChatMenuButton", {
     menu_button: {
@@ -165,6 +180,20 @@ const mainKeyboard = {
     [{ text: "🔔 Сповіщення", callback_data: "settings" }],
   ],
 };
+
+// Live-view keyboards: a refresh button that re-renders the same message
+// in place, plus a way back to the main menu without piling up messages.
+function liveViewKeyboard(self: "status" | "next") {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🔄 Оновити", callback_data: `refresh:${self}` },
+        { text: self === "status" ? "🕒 Коли світло" : "🟢 Мій статус", callback_data: self === "status" ? "next" : "status" },
+      ],
+      [{ text: "⬅️ Меню", callback_data: "back" }],
+    ],
+  };
+}
 
 function settingsKeyboard(notifyEnabled: boolean, minutes: number) {
   return {
@@ -326,6 +355,9 @@ async function handleStart(msg: TGMessage) {
       `⚡️ <b>Світло Бот</b> — ваш помічник у графіках відключень.
 
 ` +
+      `⬇️ Натисніть <b>синю кнопку меню слева</b> (біля поля введення), щоб відкрити додаток «Графік світла».
+
+` +
       `<b>Що я вмію:</b>
 ` +
       `🔔 — попереджаю про відключення заздалегідь
@@ -337,7 +369,7 @@ async function handleStart(msg: TGMessage) {
       `🕒 — показую найближчі відключення
 
 ` +
-      `<i>Спочатку оберіть місто та чергу у веб-додатку 📊, потім увімкніть сповіщення 🔔</i>`,
+      `<i>Спочатку оберіть місто та чергу у додатку, потім увімкніть сповіщення 🔔</i>`,
     mainKeyboard,
   );
 }
@@ -348,14 +380,14 @@ async function handleHelp(chatId: number) {
     `<b>📖 Як користуватися</b>
 
 ` +
-      `<b>1.</b> Натисніть синю кнопку меню «Графік світла» внизу чата та оберіть область, місто і чергу
+      `<b>1.</b> 📲 Натисніть <b>синю кнопку меню слева</b> внизу чата (біля поля введення) — відкриється додаток «Графік світла». Оберіть там область, місто і чергу
 ` +
       `<b>2.</b> У «🔔 Сповіщення» увімкніть повідомлення й оберіть інтервал — 30 або 60 хвилин
 ` +
       `<b>3.</b> Я сам напишу, коли світло вимкнуть, і повідомлю про зміни графіка
 
 ` +
-      `<i>Налаштування спільні між ботом і веб-додатком — змініть у будь-якому місці.</i>
+      `<i>Кнопки під цим повідомленням працюють тут, у чаті: статус, розклад, сповіщення — все оновлюється без зайвих повідомлень.</i>
 
 ` +
       `<b>⚙️ Команди</b>
@@ -394,12 +426,13 @@ async function handleSettings(chatId: number, tgUserId: number, editOf?: number)
   }
 }
 
-async function handleStatus(chatId: number, tgUserId: number) {
+async function handleStatus(chatId: number, tgUserId: number, editOf?: number) {
   const pref = await getUserPref(tgUserId);
   if (!prefConfigured(pref)) {
-    await sendMessage(
+    await sendOrUpdate(
       chatId,
-      `⚙️ Спочатку оберіть місто та чергу у веб-додатку — і я покажу ваш статус.`,
+      editOf,
+      `⚙️ Спочатку оберіть місто та чергу в додатку «Графік світла» (синя кнопка меню слева) — і я покажу ваш статус.`,
       mainKeyboard,
     );
     return;
@@ -409,19 +442,21 @@ async function handleStatus(chatId: number, tgUserId: number) {
   try {
     slots = await fetchTodaySlots(pref.oblast_slug ?? "", pref.city_slug!, pref.queue_group!);
   } catch {
-    await sendMessage(
+    await sendOrUpdate(
       chatId,
+      editOf,
       `😴 Не вдалося завантажити графік. Спробуйте трохи пізніше.`,
-      mainKeyboard,
+      liveViewKeyboard("status"),
     );
     return;
   }
 
   if (slots.length === 0) {
-    await sendMessage(
+    await sendOrUpdate(
       chatId,
+      editOf,
       `📭 <b>Графік відключень ще не опубліковано</b>\n\nЧекаємо оновлення інформації — як тільки з'явиться, повідомлю.`,
-      mainKeyboard,
+      liveViewKeyboard("status"),
     );
     return;
   }
@@ -457,19 +492,21 @@ async function handleStatus(chatId: number, tgUserId: number) {
     }
   }
 
-  await sendMessage(
+  await sendOrUpdate(
     chatId,
-    `${body}\n\n───────────\n📍 ${pref.city_slug} · черга ${pref.queue_group}`,
-    mainKeyboard,
+    editOf,
+    `${body}\n\n───────────\n📍 ${pref.city_name ?? pref.city_slug} · черга ${pref.queue_group}`,
+    liveViewKeyboard("status"),
   );
 }
 
-async function handleNext(chatId: number, tgUserId: number) {
+async function handleNext(chatId: number, tgUserId: number, editOf?: number) {
   const pref = await getUserPref(tgUserId);
   if (!prefConfigured(pref)) {
-    await sendMessage(
+    await sendOrUpdate(
       chatId,
-      `⚙️ Спочатку оберіть місто та чергу у веб-додатку — і я покажу розклад.`,
+      editOf,
+      `⚙️ Спочатку оберіть місто та чергу в додатку «Графік світла» (синя кнопка меню слева) — і я покажу розклад.`,
       mainKeyboard,
     );
     return;
@@ -481,15 +518,16 @@ async function handleNext(chatId: number, tgUserId: number) {
     todaySlots = await fetchTodaySlots(pref.oblast_slug ?? "", pref.city_slug!, pref.queue_group!);
     tomorrowSlots = await fetchTomorrowSlots(pref.oblast_slug ?? "", pref.city_slug!, pref.queue_group!);
   } catch {
-    await sendMessage(chatId, `😴 Не вдалося завантажити графік. Спробуйте трохи пізніше.`, mainKeyboard);
+    await sendOrUpdate(chatId, editOf, `😴 Не вдалося завантажити графік. Спробуйте трохи пізніше.`, liveViewKeyboard("next"));
     return;
   }
 
   if (todaySlots.length === 0 && tomorrowSlots.length === 0) {
-    await sendMessage(
+    await sendOrUpdate(
       chatId,
+      editOf,
       `📭 <b>Графік відключень ще не опубліковано</b>\n\nЧекаємо оновлення інформації — як тільки з'явиться, повідомлю.`,
-      mainKeyboard,
+      liveViewKeyboard("next"),
     );
     return;
   }
@@ -501,7 +539,7 @@ async function handleNext(chatId: number, tgUserId: number) {
     .sort((a, b) => a.start - b.start);
 
   let text = `🕒 <b>Найближчі відключення</b>
-📍 ${pref.city_slug} · черга ${pref.queue_group}
+📍 ${pref.city_name ?? pref.city_slug} · черга ${pref.queue_group}
 ───────────`;
 
   if (offToday.length > 0) {
@@ -526,7 +564,7 @@ async function handleNext(chatId: number, tgUserId: number) {
     text += `\n\n📭 Графік на завтра ще не опубліковано`;
   }
 
-  await sendMessage(chatId, text, mainKeyboard);
+  await sendOrUpdate(chatId, editOf, text, liveViewKeyboard("next"));
 }
 
 Deno.serve(async (req: Request) => {
@@ -599,7 +637,8 @@ Deno.serve(async (req: Request) => {
         if (messageId) await handleSettings(chatId, userId, messageId);
       } else if (cb.data === "settings") {
         await answerCallback(cb.id);
-        await handleSettings(chatId, userId);
+        if (messageId) await handleSettings(chatId, userId, messageId);
+        else await handleSettings(chatId, userId);
       } else if (cb.data === "back") {
         await answerCallback(cb.id);
         if (messageId) {
@@ -609,8 +648,9 @@ Deno.serve(async (req: Request) => {
         }
       } else {
         await answerCallback(cb.id);
-        if (cb.data === "status") await handleStatus(chatId, userId);
-        else if (cb.data === "next") await handleNext(chatId, userId);
+        // status/next/refresh all re-render the same message in place.
+        if (cb.data === "status" || cb.data === "refresh:status") await handleStatus(chatId, userId, messageId);
+        else if (cb.data === "next" || cb.data === "refresh:next") await handleNext(chatId, userId, messageId);
         else if (cb.data === "help") await handleHelp(chatId);
       }
       return new Response(JSON.stringify({ ok: true }), {
