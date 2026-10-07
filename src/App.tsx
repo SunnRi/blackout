@@ -1275,7 +1275,7 @@ function App() {
       <div className="relative z-10 mx-auto max-w-lg px-4 py-4 sm:px-5" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
 
         {/* ── Header ── */}
-        <header className="mb-4 fade-in">
+        <header className="relative z-50 mb-4 fade-in">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               {view === 'settings' && (
@@ -1331,7 +1331,7 @@ function App() {
                   {densityMenuOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setDensityMenuOpen(false)} />
-                      <div className="absolute right-0 top-10 z-50 w-52 overflow-hidden rounded-xl d-panel shadow-lg fade-in">
+                      <div className="absolute right-0 top-11 z-50 w-56 overflow-hidden rounded-xl d-panel shadow-xl fade-in-menu" style={{ zIndex: 50, isolation: 'isolate' }}>
                         {DENSITY_OPTIONS.map((o) => (
                           <button
                             key={o.id}

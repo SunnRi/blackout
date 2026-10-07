@@ -430,6 +430,7 @@
 }
 
 .fade-in         { animation: fadeIn 0.45s cubic-bezier(0.25, 1, 0.5, 1) both; }
+.fade-in-menu    { animation: fadeIn 0.2s cubic-bezier(0.25, 1, 0.5, 1) both; }
 .fade-in-scale   { animation: fadeInScale 0.4s cubic-bezier(0.25, 1, 0.5, 1) both; }
 .fade-in-right   { animation: fadeInRight 0.4s cubic-bezier(0.25, 1, 0.5, 1) both; }
 .fade-in-delay-1 { animation: fadeIn 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.06s both; }
