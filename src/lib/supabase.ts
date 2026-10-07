@@ -11,6 +11,7 @@ export type UserPreferences = {
   tg_username: string | null;
   notify_enabled: boolean;
   notify_minutes_before: number;
+  oblast_slug: string | null;
   city_slug: string | null;
   queue_group: string | null;
 };

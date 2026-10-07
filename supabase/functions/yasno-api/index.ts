@@ -12,6 +12,35 @@ const BEZSVITLA_BASE = "https://bezsvitla.com.ua";
 const YASNO_REGION_ID = 25;
 const YASNO_DSO_ID = 902;
 
+// All oblasts of Ukraine with their bezsvitla slugs.
+// `available: false` = no schedules published on bezsvitla yet.
+const OBLASTS: { slug: string; name: string; available: boolean }[] = [
+  { slug: "vinnytska-oblast", name: "Вінницька область", available: true },
+  { slug: "volynska-oblast", name: "Волинська область", available: true },
+  { slug: "dnipropetrovska-oblast", name: "Дніпропетровська область", available: true },
+  { slug: "donetska-oblast", name: "Донецька область", available: false },
+  { slug: "zhytomyrska-oblast", name: "Житомирська область", available: true },
+  { slug: "zakarpatska-oblast", name: "Закарпатська область", available: true },
+  { slug: "zaporizka-oblast", name: "Запорізька область", available: true },
+  { slug: "ivano-frankivska-oblast", name: "Івано-Франківська область", available: true },
+  { slug: "kyivska-oblast", name: "Київська область", available: true },
+  { slug: "kirovohradska-oblast", name: "Кіровоградська область", available: true },
+  { slug: "luhanska-oblast", name: "Луганська область", available: false },
+  { slug: "lvivska-oblast", name: "Львівська область", available: true },
+  { slug: "mykolaivska-oblast", name: "Миколаївська область", available: true },
+  { slug: "odeska-oblast", name: "Одеська область", available: true },
+  { slug: "poltavska-oblast", name: "Полтавська область", available: true },
+  { slug: "rivnenska-oblast", name: "Рівненська область", available: true },
+  { slug: "sumska-oblast", name: "Сумська область", available: true },
+  { slug: "ternopilska-oblast", name: "Тернопільська область", available: true },
+  { slug: "kharkivska-oblast", name: "Харківська область", available: true },
+  { slug: "khersonska-oblast", name: "Херсонська область", available: true },
+  { slug: "khmelnytska-oblast", name: "Хмельницька область", available: true },
+  { slug: "cherkaska-oblast", name: "Черкаська область", available: true },
+  { slug: "chernivetska-oblast", name: "Чернівецька область", available: true },
+  { slug: "chernihivska-oblast", name: "Чернігівська область", available: true },
+];
+
 type Slot = {
   start: number; // minutes from midnight
   end: number;
@@ -91,6 +120,84 @@ async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs =
   }
 }
 
+// ── bezsvitla helpers ─────────────────────────────────────────
+async function fetchBezsvitlaCities(oblastSlug: string): Promise<{ slug: string; name: string }[]> {
+  const resp = await fetchWithTimeout(`${BEZSVITLA_BASE}/${oblastSlug}`, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" },
+  });
+  if (!resp.ok) return [];
+
+  const html = await resp.text();
+  const cities: { slug: string; name: string }[] = [];
+  const seen = new Set<string>();
+
+  // City cards link to /<oblast>/<city>
+  const cardPattern = new RegExp(
+    `<a[^>]*href="/${oblastSlug}/([a-z0-9-]+)"[^>]*>(.*?)</a>`,
+    "gs",
+  );
+  for (const m of html.matchAll(cardPattern)) {
+    const slug = m[1];
+    if (slug === "grafik-na-zavtra" || seen.has(slug)) continue;
+    seen.add(slug);
+    const name = m[2].replace(/<[^>]+>/g, "").trim();
+    if (name && name.length > 1) cities.push({ slug, name });
+  }
+  return cities;
+}
+
+async function fetchBezsvitlaSchedule(
+  oblastSlug: string,
+  citySlug: string,
+  tomorrow: boolean,
+): Promise<CitySchedule> {
+  const path = tomorrow
+    ? `${BEZSVITLA_BASE}/${oblastSlug}/${citySlug}/grafik-na-zavtra`
+    : `${BEZSVITLA_BASE}/${oblastSlug}/${citySlug}`;
+
+  const resp = await fetchWithTimeout(path, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" },
+  });
+  if (!resp.ok) {
+    if (tomorrow) {
+      return { city: citySlug, source: "bezsvitla", updated: null, schedules: [] };
+    }
+    throw new Error(`Failed to fetch city page: ${resp.status}`);
+  }
+  const html = await resp.text();
+  const schedules = parseBezsvitla(html);
+  const updatedMatch = html.match(/Оновлено\s+([\d.]+\s+[\d:]+)/);
+  const updated = updatedMatch ? updatedMatch[1] : null;
+  return { city: citySlug, source: "bezsvitla", updated, schedules };
+}
+
+// ── Yasno helpers (Kyiv city) ─────────────────────────────────
+async function fetchYasnoSchedule(tomorrow: boolean): Promise<CitySchedule> {
+  const plannedResp = await fetchWithTimeout(
+    `${YASNO_BASE}/regions/${YASNO_REGION_ID}/dsos/${YASNO_DSO_ID}/planned-outages`,
+    { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
+  );
+  if (!plannedResp.ok) {
+    throw new Error(`Yasno API returned ${plannedResp.status}`);
+  }
+  const planned = await plannedResp.json();
+  const schedules: QueueSchedule[] = [];
+  for (const [group, data] of Object.entries(planned)) {
+    const day = tomorrow
+      ? (data as Record<string, unknown>)?.tomorrow as { slots: Slot[] } | undefined
+      : (data as Record<string, unknown>)?.today as { slots: Slot[] } | undefined;
+    const slots = day?.slots ?? [];
+    if (tomorrow && slots.length === 0) continue;
+    schedules.push({ queue: group, slots });
+  }
+  return {
+    city: "kyiv",
+    source: "yasno",
+    updated: ((planned["1.1"] as Record<string, unknown>)?.updatedOn as string) ?? null,
+    schedules,
+  };
+}
+
 // ── Main handler ──────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -100,147 +207,54 @@ Deno.serve(async (req: Request) => {
   try {
     const url = new URL(req.url);
     const params = url.searchParams;
-    const endpoint = params.get("endpoint") || "cities";
+    const endpoint = params.get("endpoint") || "oblasts";
 
     switch (endpoint) {
-      // ── Kyiv oblast cities from bezsvitla ──────────────────
+      // ── All oblasts of Ukraine ─────────────────────────────
+      case "oblasts": {
+        return jsonResponse(OBLASTS);
+      }
+
+      // ── Cities for an oblast (bezsvitla) ───────────────────
       case "cities": {
-        const resp = await fetchWithTimeout(`${BEZSVITLA_BASE}/kyivska-oblast`, {
-          headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" },
-        });
-        const html = await resp.text();
-        const cities: { slug: string; name: string }[] = [];
-        const seen = new Set<string>();
-        const cardPattern = /<a[^>]*href="\/kyivska-oblast\/([a-z-]+)"[^>]*class="bz-area-card[^"]*"[^>]*>(.*?)<\/a>/gs;
-        const cardMatches = [...html.matchAll(cardPattern)];
-        for (const m of cardMatches) {
-          const slug = m[1];
-          if (slug === "grafik-na-zavtra" || seen.has(slug)) continue;
-          seen.add(slug);
-          const name = m[2].replace(/<[^>]+>/g, "").trim();
-          if (name) cities.push({ slug, name });
+        const oblast = params.get("oblast");
+        if (!oblast) return jsonError("oblast is required", 400);
+
+        if (oblast === "kyiv-city") {
+          return jsonResponse([{ slug: "kyiv", name: "Київ" }]);
         }
+
+        const cities = await fetchBezsvitlaCities(oblast);
         if (cities.length === 0) {
-          const fallbackPattern = /<a[^>]*href="\/kyivska-oblast\/([a-z-]+)"[^>]*>(.*?)<\/a>/gs;
-          for (const m of html.matchAll(fallbackPattern)) {
-            const slug = m[1];
-            if (slug === "grafik-na-zavtra" || seen.has(slug)) continue;
-            seen.add(slug);
-            const name = m[2].replace(/<[^>]+>/g, "").trim();
-            if (name) cities.push({ slug, name });
-          }
+          return jsonError("No cities found for this oblast", 404);
         }
-        cities.unshift({ slug: "kyiv", name: "Київ (місто)" });
         return jsonResponse(cities);
       }
 
       // ── Schedule for a specific city ───────────────────────
       case "schedule": {
         const citySlug = params.get("city");
+        const oblast = params.get("oblast");
         if (!citySlug) return jsonError("city is required", 400);
 
-        if (citySlug === "kyiv") {
-          // Use Yasno API for Kyiv city
-          const plannedResp = await fetchWithTimeout(
-            `${YASNO_BASE}/regions/${YASNO_REGION_ID}/dsos/${YASNO_DSO_ID}/planned-outages`,
-            { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
-          );
-          if (!plannedResp.ok) {
-            return jsonError(`Yasno API returned ${plannedResp.status}`, plannedResp.status);
-          }
-          const planned = await plannedResp.json();
-          // Transform to unified format
-          const schedules: QueueSchedule[] = [];
-          for (const [group, data] of Object.entries(planned)) {
-            const todaySlots = (data as Record<string, unknown>)?.today as { slots: Slot[] } | undefined;
-            schedules.push({ queue: group, slots: todaySlots?.slots ?? [] });
-          }
-          const result: CitySchedule = {
-            city: "kyiv",
-            source: "yasno",
-            updated: ((planned["1.1"] as Record<string, unknown>)?.updatedOn as string) ?? null,
-            schedules,
-          };
-          return jsonResponse(result);
+        if (oblast === "kyiv-city" || citySlug === "kyiv") {
+          return jsonResponse(await fetchYasnoSchedule(false));
         }
-
-        // Use bezsvitla for oblast cities
-        const resp = await fetchWithTimeout(
-          `${BEZSVITLA_BASE}/kyivska-oblast/${citySlug}`,
-          { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
-        );
-        if (!resp.ok) {
-          return jsonError(`Failed to fetch city page: ${resp.status}`, resp.status);
-        }
-        const html = await resp.text();
-        const schedules = parseBezsvitla(html);
-
-        // Extract updated time
-        const updatedMatch = html.match(/Оновлено\s+([\d.]+\s+[\d:]+)/);
-        const updated = updatedMatch ? updatedMatch[1] : null;
-
-        const result: CitySchedule = {
-          city: citySlug,
-          source: "bezsvitla",
-          updated,
-          schedules,
-        };
-        return jsonResponse(result);
+        if (!oblast) return jsonError("oblast is required", 400);
+        return jsonResponse(await fetchBezsvitlaSchedule(oblast, citySlug, false));
       }
 
       // ── Tomorrow schedule for a city ───────────────────────
       case "tomorrow": {
         const citySlug = params.get("city");
+        const oblast = params.get("oblast");
         if (!citySlug) return jsonError("city is required", 400);
 
-        if (citySlug === "kyiv") {
-          const plannedResp = await fetchWithTimeout(
-            `${YASNO_BASE}/regions/${YASNO_REGION_ID}/dsos/${YASNO_DSO_ID}/planned-outages`,
-            { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
-          );
-          const planned = await plannedResp.json();
-          const schedules: QueueSchedule[] = [];
-          for (const [group, data] of Object.entries(planned)) {
-            const tomorrowData = (data as Record<string, unknown>)?.tomorrow as { slots: Slot[] } | undefined;
-            const tomorrowSlots = tomorrowData?.slots ?? [];
-            if (tomorrowSlots.length > 0) {
-              schedules.push({ queue: group, slots: tomorrowSlots });
-            }
-          }
-          const result: CitySchedule = {
-            city: "kyiv",
-            source: "yasno",
-            updated: ((planned["1.1"] as Record<string, unknown>)?.updatedOn as string) ?? null,
-            schedules,
-          };
-          return jsonResponse(result);
+        if (oblast === "kyiv-city" || citySlug === "kyiv") {
+          return jsonResponse(await fetchYasnoSchedule(true));
         }
-
-        // bezsvitla tomorrow
-        const resp = await fetchWithTimeout(
-          `${BEZSVITLA_BASE}/kyivska-oblast/${citySlug}/grafik-na-zavtra`,
-          { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
-        );
-        if (!resp.ok) {
-          // No tomorrow schedule available
-          return jsonResponse({
-            city: citySlug,
-            source: "bezsvitla",
-            updated: null,
-            schedules: [],
-          });
-        }
-        const html = await resp.text();
-        const schedules = parseBezsvitla(html);
-        const updatedMatch = html.match(/Оновлено\s+([\d.]+\s+[\d:]+)/);
-        const updated = updatedMatch ? updatedMatch[1] : null;
-        const result: CitySchedule = {
-          city: citySlug,
-          source: "bezsvitla",
-          updated,
-          schedules,
-        };
-        return jsonResponse(result);
+        if (!oblast) return jsonError("oblast is required", 400);
+        return jsonResponse(await fetchBezsvitlaSchedule(oblast, citySlug, true));
       }
 
       default:
@@ -248,7 +262,7 @@ Deno.serve(async (req: Request) => {
     }
   } catch (err) {
     console.error("yasno-api error:", err);
-    return jsonError(err.message, 500);
+    return jsonError(err instanceof Error ? err.message : "Internal error", 500);
   }
 });
 
@@ -264,4 +278,3 @@ function jsonError(message: string, status: number) {
     { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 }
-

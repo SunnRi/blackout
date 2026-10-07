@@ -3,7 +3,7 @@ import {
   Zap, ZapOff, MapPin, Loader2, CheckCircle2,
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, AlertTriangle, Clock, Info, X,
-  Sparkles, ArrowRight, ArrowLeft, Check, Boxes, Cloud, Palette,
+  Sparkles, ArrowRight, ArrowLeft, Check,
   LayoutGrid, Gauge, Layers, Eye,
 } from 'lucide-react';
 import { supabase, type UserPreferences } from '@/lib/supabase';
@@ -12,8 +12,8 @@ import {
   initTelegramWebApp, getTelegramUser, hapticImpact, hapticNotification,
 } from '@/lib/telegram';
 import {
-  fetchCities, fetchTodaySchedule, fetchTomorrowSchedule,
-  minutesToTime, type City, type Slot, type CitySchedule,
+  fetchOblasts, fetchCities, fetchTodaySchedule, fetchTomorrowSchedule,
+  minutesToTime, type Oblast, type City, type Slot, type CitySchedule,
 } from '@/lib/yasno-api';
 
 const ALL_GROUPS = ['1.1','1.2','2.1','2.2','3.1','3.2','4.1','4.2','5.1','5.2','6.1','6.2'];
@@ -100,7 +100,6 @@ function getHourStatus(sorted: Slot[], hour: number): 'on' | 'off' | 'partial' {
 
 // ── Theme / Design / Density types ────────────────────────────
 type ThemeMode = 'auto' | 'light' | 'dark';
-type Design = 'glass' | 'brutal' | 'clay';
 type Density = 'minimal' | 'standard' | 'extended';
 
 const DENSITY_OPTIONS: { id: Density; name: string; desc: string; icon: typeof Gauge }[] = [
@@ -109,19 +108,9 @@ const DENSITY_OPTIONS: { id: Density; name: string; desc: string; icon: typeof G
   { id: 'extended', name: 'Розширений', desc: 'Все + статистика дня і обидва дні одразу', icon: Layers },
 ];
 
-const DESIGN_OPTIONS: { id: Design; name: string; desc: string; icon: typeof Palette }[] = [
-  { id: 'glass', name: 'Liquid Glass', desc: 'Скло, розмиття, живе тло — як iOS 26', icon: Sparkles },
-  { id: 'brutal', name: 'Необруталізм', desc: 'Жирні рамки, контраст, характер', icon: Boxes },
-  { id: 'clay', name: 'Клей', desc: 'М’які пастельні 3D-панелі', icon: Cloud },
-];
-
 function getInitialThemeMode(): ThemeMode {
   if (typeof window === 'undefined') return 'auto';
   return (localStorage.getItem('themeMode') as ThemeMode) || 'auto';
-}
-function getInitialDesign(): Design {
-  if (typeof window === 'undefined') return 'glass';
-  return (localStorage.getItem('design') as Design) || 'glass';
 }
 function getInitialDensity(): Density {
   if (typeof window === 'undefined') return 'standard';
@@ -483,7 +472,7 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
 
 // ── Pickers ───────────────────────────────────────────────────
 function OptionRow<T extends string>({ options, value, onChange }: {
-  options: { id: T; name: string; icon: typeof Palette }[];
+  options: { id: T; name: string; icon: typeof Eye }[];
   value: T;
   onChange: (v: T) => void;
 }) {
@@ -512,11 +501,15 @@ function OptionRow<T extends string>({ options, value, onChange }: {
 
 // ── Onboarding ────────────────────────────────────────────────
 function Onboarding({
-  step, setStep, cities, selectedCity, setSelectedCity, selectedGroup, setSelectedGroup,
-  onFinish, scheduleLoading, availableGroups,
+  step, setStep, oblasts, selectedOblast, setSelectedOblast,
+  cities, selectedCity, setSelectedCity, selectedGroup, setSelectedGroup,
+  onFinish, scheduleLoading, citiesLoading, availableGroups,
 }: {
   step: number;
   setStep: (n: number) => void;
+  oblasts: Oblast[];
+  selectedOblast: Oblast | null;
+  setSelectedOblast: (o: Oblast) => void;
   cities: City[];
   selectedCity: City | null;
   setSelectedCity: (c: City) => void;
@@ -524,6 +517,7 @@ function Onboarding({
   setSelectedGroup: (g: string) => void;
   onFinish: () => void;
   scheduleLoading: boolean;
+  citiesLoading: boolean;
   availableGroups: string[];
 }) {
   const [citySearch, setCitySearch] = useState('');
@@ -533,7 +527,7 @@ function Onboarding({
     return cities.filter((c) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
   }, [cities, citySearch]);
 
-  const totalSteps = 3;
+  const totalSteps = 4;
 
   return (
     <div className="relative min-h-screen bg-primary-c" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -570,6 +564,29 @@ function Onboarding({
 
           {step === 1 && (
             <div className="flex flex-1 flex-col fade-in-right">
+              <h2 className="text-2xl font-extrabold text-primary-c">Ваша область</h2>
+              <p className="mb-4 mt-1 text-sm text-secondary-c">Оберіть область або місто Київ</p>
+              <div className="d-panel max-h-80 flex-1 space-y-1 overflow-y-auto rounded-2xl p-2">
+                {oblasts.map((oblast) => (
+                  <button
+                    key={oblast.slug}
+                    onClick={() => { setSelectedOblast(oblast); hapticImpact('light'); }}
+                    className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-all ${
+                      selectedOblast?.slug === oblast.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <MapPin className="h-4 w-4 shrink-0" />
+                    {oblast.name}
+                    {selectedOblast?.slug === oblast.slug && <Check className="ml-auto h-4 w-4" />}
+                  </button>
+                ))}
+                {oblasts.length === 0 && <p className="py-6 text-center text-sm text-muted-c">Не вдалося завантажити</p>}
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="flex flex-1 flex-col fade-in-right">
               <h2 className="text-2xl font-extrabold text-primary-c">Ваше місто</h2>
               <p className="mb-4 mt-1 text-sm text-secondary-c">Оберіть місто, щоб ми показали правильний графік</p>
               <div className="relative mb-3">
@@ -581,25 +598,33 @@ function Onboarding({
                 />
               </div>
               <div className="d-panel max-h-80 flex-1 space-y-1 overflow-y-auto rounded-2xl p-2">
-                {filtered.map((city) => (
-                  <button
-                    key={city.slug}
-                    onClick={() => { setSelectedCity(city); setSelectedGroup(''); hapticImpact('light'); }}
-                    className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-all ${
-                      selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
-                    }`}
-                  >
-                    <MapPin className="h-4 w-4 shrink-0" />
-                    {city.name}
-                    {selectedCity?.slug === city.slug && <Check className="ml-auto h-4 w-4" />}
-                  </button>
-                ))}
-                {filtered.length === 0 && <p className="py-6 text-center text-sm text-muted-c">Не знайдено</p>}
+                {citiesLoading ? (
+                  <div className="flex items-center justify-center py-8 text-secondary-c">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Завантаження міст...
+                  </div>
+                ) : (
+                  <>
+                    {filtered.map((city) => (
+                      <button
+                        key={city.slug}
+                        onClick={() => { setSelectedCity(city); setSelectedGroup(''); hapticImpact('light'); }}
+                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-all ${
+                          selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <MapPin className="h-4 w-4 shrink-0" />
+                        {city.name}
+                        {selectedCity?.slug === city.slug && <Check className="ml-auto h-4 w-4" />}
+                      </button>
+                    ))}
+                    {filtered.length === 0 && <p className="py-6 text-center text-sm text-muted-c">Не знайдено</p>}
+                  </>
+                )}
               </div>
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div className="flex flex-1 flex-col fade-in-right">
               <h2 className="text-2xl font-extrabold text-primary-c">Ваша черга</h2>
               <p className="mb-4 mt-1 text-sm text-secondary-c">Черга вказана у вашому рахунку за електроенергію</p>
@@ -637,15 +662,15 @@ function Onboarding({
           )}
           <button
             onClick={() => {
-              if (step === 2) { onFinish(); hapticNotification('success'); }
+              if (step === 3) { onFinish(); hapticNotification('success'); }
               else { setStep(step + 1); hapticImpact('light'); }
             }}
-            disabled={(step === 1 && !selectedCity) || (step === 2 && !selectedGroup)}
+            disabled={(step === 1 && !selectedOblast) || (step === 2 && !selectedCity) || (step === 3 && !selectedGroup)}
             className="flex flex-1 items-center justify-center gap-2 rounded-2xl accent-bg py-4 text-base font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] disabled:opacity-40"
           >
             {step === 0 && <>Почнемо <ArrowRight className="h-5 w-5" /></>}
-            {step === 1 && <>Далі <ArrowRight className="h-5 w-5" /></>}
-            {step === 2 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
+            {(step === 1 || step === 2) && <>Далі <ArrowRight className="h-5 w-5" /></>}
+            {step === 3 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
           </button>
         </div>
       </div>
@@ -663,12 +688,14 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState<KyivTime>(getKyivTime());
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
-  const [design, setDesign] = useState<Design>(getInitialDesign);
   const [density, setDensity] = useState<Density>(getInitialDensity);
   const [onboarded, setOnboarded] = useState<boolean>(() => localStorage.getItem('onboarded') === '1');
   const [obStep, setObStep] = useState(0);
 
+  const [oblasts, setOblasts] = useState<Oblast[]>([]);
+  const [selectedOblast, setSelectedOblast] = useState<Oblast | null>(null);
   const [cities, setCities] = useState<City[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [availableGroups, setAvailableGroups] = useState<string[]>([]);
@@ -701,14 +728,23 @@ function App() {
   }, [resolvedTheme]);
 
   useEffect(() => { localStorage.setItem('themeMode', themeMode); }, [themeMode]);
-  useEffect(() => { localStorage.setItem('design', design); }, [design]);
   useEffect(() => { localStorage.setItem('density', density); }, [density]);
 
   useEffect(() => {
-    fetchCities()
-      .then((data) => { setCities(data); setLoading(false); })
-      .catch(() => { setApiError('Не вдалося завантажити список міст'); setLoading(false); });
+    fetchOblasts()
+      .then((data) => { setOblasts(data); setLoading(false); })
+      .catch(() => { setApiError('Не вдалося завантажити список областей'); setLoading(false); });
   }, []);
+
+  // Load cities when oblast changes
+  useEffect(() => {
+    if (!selectedOblast) { setCities([]); return; }
+    setCitiesLoading(true);
+    fetchCities(selectedOblast.slug)
+      .then((data) => setCities(data))
+      .catch(() => setCities([]))
+      .finally(() => setCitiesLoading(false));
+  }, [selectedOblast]);
 
   useEffect(() => {
     if (!tgUser || cities.length === 0) return;
@@ -718,6 +754,10 @@ function App() {
           const prefs = data as UserPreferences;
           setNotifyEnabled(prefs.notify_enabled);
           setNotifyMinutes(prefs.notify_minutes_before);
+          if (prefs.oblast_slug) {
+            const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug);
+            if (oblast) setSelectedOblast(oblast);
+          }
           if (prefs.city_slug) {
             const city = cities.find((c) => c.slug === prefs.city_slug);
             if (city) setSelectedCity(city);
@@ -725,14 +765,15 @@ function App() {
           if (prefs.queue_group) setSelectedGroup(prefs.queue_group);
         }
       });
-  }, [tgUser, cities]);
+  }, [tgUser, oblasts, cities]);
 
   useEffect(() => {
-    if (!tgUser || !selectedCity || !selectedGroup) return;
+    if (!tgUser || !selectedOblast || !selectedCity || !selectedGroup) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       await supabase.from('user_preferences').upsert({
         tg_user_id: tgUser.id, tg_username: tgUser.username ?? null,
+        oblast_slug: selectedOblast.slug,
         city_slug: selectedCity.slug, queue_group: selectedGroup,
         notify_enabled: notifyEnabled, notify_minutes_before: notifyMinutes,
         updated_at: new Date().toISOString(),
@@ -741,12 +782,15 @@ function App() {
       setTimeout(() => setSaved(false), 2000);
     }, 1500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [tgUser, selectedCity, selectedGroup, notifyEnabled, notifyMinutes]);
+  }, [tgUser, selectedOblast, selectedCity, selectedGroup, notifyEnabled, notifyMinutes]);
 
   useEffect(() => {
-    if (!selectedCity) return;
+    if (!selectedOblast || !selectedCity) return;
     setScheduleLoading(true); setApiError(null);
-    Promise.all([fetchTodaySchedule(selectedCity.slug), fetchTomorrowSchedule(selectedCity.slug)])
+    Promise.all([
+      fetchTodaySchedule(selectedOblast.slug, selectedCity.slug),
+      fetchTomorrowSchedule(selectedOblast.slug, selectedCity.slug),
+    ])
       .then(([today, tomorrow]) => {
         setTodaySchedule(today); setTomorrowSchedule(tomorrow);
         const groups = today.schedules.map((s) => s.queue).sort();
@@ -754,7 +798,7 @@ function App() {
       })
       .catch(() => { setApiError('Не вдалося завантажити графік. Спробуйте пізніше.'); })
       .finally(() => setScheduleLoading(false));
-  }, [selectedCity]);
+  }, [selectedOblast, selectedCity]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(getKyivTime()), 15000);
@@ -794,13 +838,15 @@ function App() {
 
   if (!onboarded) {
     return (
-      <div className={design === 'brutal' ? 'design-brutal' : design === 'clay' ? 'design-clay' : 'design-glass'}>
+      <div className="design-glass">
         <Onboarding
           step={obStep} setStep={setObStep}
+          oblasts={oblasts}
+          selectedOblast={selectedOblast} setSelectedOblast={setSelectedOblast}
           cities={cities}
           selectedCity={selectedCity} setSelectedCity={setSelectedCity}
           selectedGroup={selectedGroup} setSelectedGroup={setSelectedGroup}
-          scheduleLoading={scheduleLoading} availableGroups={availableGroups}
+          scheduleLoading={scheduleLoading} citiesLoading={citiesLoading} availableGroups={availableGroups}
           onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); }}
         />
       </div>
@@ -808,11 +854,10 @@ function App() {
   }
 
   const isExtended = density === 'extended';
-  const designClass = design === 'brutal' ? 'design-brutal' : design === 'clay' ? 'design-clay' : 'design-glass';
 
   return (
-    <div className={`${designClass} min-h-screen bg-primary-c`} style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      {design === 'glass' && <Aurora />}
+    <div className="design-glass min-h-screen bg-primary-c" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <Aurora />
       <div className="relative z-10 mx-auto max-w-lg px-4 py-4 sm:px-5">
 
         {/* ── Header ── */}
@@ -839,7 +884,7 @@ function App() {
                     {selectedCity.name}{selectedGroup && ` · ${selectedGroup}`}
                   </button>
                 ) : !selectedCity && view === 'schedule' ? (
-                  <p className="text-xs text-secondary-c">Київська область</p>
+                  <p className="text-xs text-secondary-c">Україна</p>
                 ) : null}
               </div>
             </div>
@@ -974,17 +1019,6 @@ function App() {
               </div>
             )}
 
-            {/* Design */}
-            <div>
-              <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">
-                <Palette className="h-3.5 w-3.5 accent-c" /> Дизайн
-              </h3>
-              <OptionRow
-                options={DESIGN_OPTIONS.map(({ id, name, icon }) => ({ id, name, icon }))}
-                value={design} onChange={setDesign}
-              />
-            </div>
-
             {/* Density */}
             <div>
               <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">
@@ -1012,6 +1046,22 @@ function App() {
               </div>
             </div>
 
+            {/* Oblast */}
+            <div>
+              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Область</h3>
+              <select
+                value={selectedOblast?.slug ?? ''}
+                onChange={(e) => {
+                  const oblast = oblasts.find((o) => o.slug === e.target.value);
+                  if (oblast) { setSelectedOblast(oblast); setSelectedCity(null); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }
+                }}
+                className="d-panel w-full appearance-none rounded-xl px-3 py-2 text-sm text-primary-c outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="" disabled>Оберіть область...</option>
+                {oblasts.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
+              </select>
+            </div>
+
             {/* City */}
             <div>
               <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Місто</h3>
@@ -1024,19 +1074,27 @@ function App() {
                 />
               </div>
               <div className="d-panel max-h-44 space-y-0.5 overflow-y-auto rounded-2xl p-1">
-                {filteredSettingsCities.map((city) => (
-                  <button
-                    key={city.slug}
-                    onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-all ${
-                      selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
-                    }`}
-                  >
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    {city.name}
-                  </button>
-                ))}
-                {filteredSettingsCities.length === 0 && <p className="py-3 text-center text-xs text-muted-c">Не знайдено</p>}
+                {!selectedOblast ? (
+                  <p className="py-3 text-center text-xs text-muted-c">Спочатку оберіть область</p>
+                ) : citiesLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-3 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
+                ) : (
+                  <>
+                    {filteredSettingsCities.map((city) => (
+                      <button
+                        key={city.slug}
+                        onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
+                        className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-all ${
+                          selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                        {city.name}
+                      </button>
+                    ))}
+                    {filteredSettingsCities.length === 0 && <p className="py-3 text-center text-xs text-muted-c">Не знайдено</p>}
+                  </>
+                )}
               </div>
             </div>
 
