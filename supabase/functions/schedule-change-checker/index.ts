@@ -19,8 +19,6 @@ const YASNO_DSO_ID = 902;
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 let cronSecretCache: { value: string; at: number } | null = null;
 
-// The shared cron secret lives in a private table; fetch it via the
-// service-role-only SQL function and cache briefly per instance.
 async function getCronSecret(): Promise<string | null> {
   if (cronSecretCache && Date.now() - cronSecretCache.at < 10 * 60 * 1000) {
     return cronSecretCache.value;
@@ -32,14 +30,13 @@ async function getCronSecret(): Promise<string | null> {
 }
 
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
-
 const RETENTION_DAYS = 14;
 const MINI_APP_URL = Deno.env.get("MINI_APP_URL") ?? "https://bolt.new";
 
 type Slot = { start: number; end: number; type: string };
 type QueueSchedule = { queue: string; slots: Slot[] };
+type DaySchedule = { date: string; schedules: QueueSchedule[]; sourceOk: boolean };
 
-// ── Fetch with timeout ────────────────────────────────────────
 async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -55,7 +52,6 @@ function timeToMinutes(time: string): number {
   return h * 60 + m;
 }
 
-// ── Parse bezsvitla HTML ──────────────────────────────────────
 function parseBezsvitla(html: string): QueueSchedule[] {
   const results: QueueSchedule[] = [];
   const queueMatches = [...html.matchAll(/Черга\s+(\d\.\d)/g)];
@@ -80,24 +76,73 @@ function parseBezsvitla(html: string): QueueSchedule[] {
   return results;
 }
 
-// ── Yasno (Kyiv) ──────────────────────────────────────────────
-async function fetchYasnoSchedule(tomorrow: boolean): Promise<QueueSchedule[]> {
-  const resp = await fetchWithTimeout(
-    `${YASNO_BASE}/regions/${YASNO_REGION_ID}/dsos/${YASNO_DSO_ID}/planned-outages`,
-    { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
-  );
-  if (!resp.ok) throw new Error(`Yasno API ${resp.status}`);
-  const planned = await resp.json();
-  const schedules: QueueSchedule[] = [];
-  for (const [group, data] of Object.entries(planned)) {
-    const day = tomorrow
-      ? (data as Record<string, unknown>)?.tomorrow as { slots: Slot[] } | undefined
-      : (data as Record<string, unknown>)?.today as { slots: Slot[] } | undefined;
-    const slots = day?.slots ?? [];
-    if (tomorrow && slots.length === 0) continue;
-    schedules.push({ queue: group, slots });
+// ── Kyiv time helpers ─────────────────────────────────────────
+function getKyivNow(): Date {
+  const now = new Date();
+  return new Date(now.toLocaleString("en-US", { timeZone: "Europe/Kyiv" }));
+}
+
+function getKyivDateISO(): string {
+  return getKyivNow().toISOString().split("T")[0];
+}
+
+function getTomorrowDateISO(): string {
+  const d = getKyivNow();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
+// ── Source validators ─────────────────────────────────────────
+// A page that returns 200 but has no "Черга" markers is probably a layout
+// change or error page, not a real schedule. We refuse to treat it as data.
+function bezsvitlaLooksValid(html: string, parsed: QueueSchedule[]): boolean {
+  if (parsed.length > 0) return true;
+  // If the page mentions queues but the parser found no slots, the HTML
+  // structure may have changed — don't trust the empty result.
+  if (/Черга\s+\d\.\d/.test(html)) return false;
+  return false;
+}
+
+async function fetchYasnoSchedule(tomorrow: boolean): Promise<{ schedules: QueueSchedule[]; ok: boolean }> {
+  try {
+    const resp = await fetchWithTimeout(
+      `${YASNO_BASE}/regions/${YASNO_REGION_ID}/dsos/${YASNO_DSO_ID}/planned-outages`,
+      { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" } },
+    );
+    if (!resp.ok) return { schedules: [], ok: false };
+    const planned = await resp.json();
+    const schedules: QueueSchedule[] = [];
+    for (const [group, data] of Object.entries(planned)) {
+      const day = tomorrow
+        ? (data as Record<string, unknown>)?.tomorrow as { slots: Slot[] } | undefined
+        : (data as Record<string, unknown>)?.today as { slots: Slot[] } | undefined;
+      const slots = day?.slots ?? [];
+      if (tomorrow && slots.length === 0) continue;
+      schedules.push({ queue: group, slots });
+    }
+    return { schedules, ok: true };
+  } catch {
+    return { schedules: [], ok: false };
   }
-  return schedules;
+}
+
+async function fetchBezsvitlaSchedule(oblastSlug: string, citySlug: string, tomorrow: boolean): Promise<{ schedules: QueueSchedule[]; ok: boolean }> {
+  try {
+    const url = tomorrow
+      ? `${BEZSVITLA_BASE}/${oblastSlug}/${citySlug}/grafik-na-zavtra`
+      : `${BEZSVITLA_BASE}/${oblastSlug}/${citySlug}`;
+    const resp = await fetchWithTimeout(
+      url,
+      { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
+    );
+    if (!resp.ok) return { schedules: [], ok: false };
+    const html = await resp.text();
+    const parsed = parseBezsvitla(html);
+    if (!bezsvitlaLooksValid(html, parsed)) return { schedules: [], ok: false };
+    return { schedules: parsed, ok: true };
+  } catch {
+    return { schedules: [], ok: false };
+  }
 }
 
 // ── Change detection ──────────────────────────────────────────
@@ -134,8 +179,6 @@ function describeDiff(oldSlots: Slot[], newSlots: Slot[]): string {
   const addedOff = added.filter(isOff);
   const removedOff = removed.filter(isOff);
 
-  // An outage that moved slightly (e.g. 14:00–16:00 → 15:00–17:00) reads
-  // better as a time shift than as separate add + remove.
   const shifted: string[] = [];
   const usedRemoved = new Set<number>();
   const pureAdded: Slot[] = [];
@@ -165,17 +208,17 @@ function describeDiff(oldSlots: Slot[], newSlots: Slot[]): string {
 async function checkCity(
   oblastSlug: string,
   citySlug: string,
-  todaySchedules: QueueSchedule[],
-  tomorrowSchedules: QueueSchedule[],
+  dayData: { date: string; label: string; schedules: QueueSchedule[]; sourceOk: boolean }[],
 ) {
-  // Load previous snapshot
+  // Load previous snapshots for the dates we're checking
+  const dates = dayData.map((d) => d.date);
   const { data: prevRows } = await supabase
     .from("schedule_snapshots")
-    .select("queue, day, fingerprint")
+    .select("queue, schedule_date, fingerprint")
     .eq("oblast_slug", oblastSlug)
-    .eq("city_slug", citySlug);
+    .eq("city_slug", citySlug)
+    .in("schedule_date", dates);
 
-  // Users following this city — they get change notifications
   const { data: followerRows } = await supabase
     .from("user_preferences")
     .select("tg_user_id, queue_group, notify_enabled")
@@ -184,10 +227,10 @@ async function checkCity(
     .not("queue_group", "is", null);
   const followers = (followerRows ?? []) as { tg_user_id: number; queue_group: string; notify_enabled: boolean }[];
 
-  type Snap = { queue: string; day: string; fingerprint: string };
+  type Snap = { queue: string; schedule_date: string; fingerprint: string };
   const prev = new Map<string, Snap>();
   for (const r of (prevRows ?? []) as Snap[]) {
-    prev.set(`${r.queue}|${r.day}`, r);
+    prev.set(`${r.queue}|${r.schedule_date}`, r);
   }
 
   const changes: {
@@ -197,18 +240,20 @@ async function checkCity(
   }[] = [];
   const userNotifs: { tg_user_id: number; day: string; queue: string; summary: string }[] = [];
   const upserts: {
-    oblast_slug: string; city_slug: string; queue: string; day: string; fingerprint: string;
+    oblast_slug: string; city_slug: string; queue: string; schedule_date: string; fingerprint: string; day: string;
   }[] = [];
 
-  for (const day of ["today", "tomorrow"] as const) {
-    const schedules = day === "today" ? todaySchedules : tomorrowSchedules;
-    for (const sched of schedules) {
+  for (const day of dayData) {
+    // If the source returned garbage or was unreachable, skip this day
+    // entirely: don't compare, don't delete, don't notify.
+    if (!day.sourceOk) continue;
+
+    for (const sched of day.schedules) {
       const fp = slotsFingerprint(sched.slots);
-      const key = `${sched.queue}|${day}`;
+      const key = `${sched.queue}|${day.date}`;
       const prevFp = prev.get(key)?.fingerprint;
       if (prevFp === undefined) {
-        // First sighting of this queue: record the baseline snapshot only.
-        // It is not a change, so it stays out of the change log.
+        // First sighting of this queue for this date: baseline only.
       } else if (prevFp !== fp) {
         const prevSlots = prevFp.split("|").filter(Boolean).map((s) => {
           const [range, type] = s.split(":");
@@ -217,30 +262,36 @@ async function checkCity(
         });
         const summary = describeDiff(prevSlots, sched.slots);
         changes.push({
-          oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, day,
+          oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, day: day.label,
           change_type: "changed",
           summary,
           old_slots: prevSlots, new_slots: sched.slots,
         });
         for (const f of followers) {
           if (f.queue_group === sched.queue && f.notify_enabled) {
-            userNotifs.push({ tg_user_id: f.tg_user_id, day, queue: sched.queue, summary });
+            userNotifs.push({ tg_user_id: f.tg_user_id, day: day.label, queue: sched.queue, summary });
           }
         }
       }
-      upserts.push({ oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, day, fingerprint: fp });
+      upserts.push({ oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, schedule_date: day.date, fingerprint: fp, day: day.label });
     }
-    // Queues that disappeared
-    for (const [key, snap] of prev) {
-      if (!key.endsWith(`|${day}`)) continue;
-      if (!schedules.some((s) => `${s.queue}|${day}` === key)) {
-        changes.push({
-          oblast_slug: oblastSlug, city_slug: citySlug, queue: snap.queue, day,
-          change_type: "removed",
-          summary: "Графік для цієї черги більше не публікується",
-          old_slots: null, new_slots: null,
-        });
-        upserts.push({ oblast_slug: oblastSlug, city_slug: citySlug, queue: snap.queue, day, fingerprint: "" });
+
+    // Detect queues that disappeared — but only if the source was healthy
+    // and returned at least one queue. If the source returned zero queues
+    // we cannot distinguish "all schedules removed" from "source broken",
+    // so we err on the side of caution and skip removal detection.
+    if (day.sourceOk && day.schedules.length > 0) {
+      for (const [key, snap] of prev) {
+        if (!key.endsWith(`|${day.date}`)) continue;
+        if (!day.schedules.some((s) => `${s.queue}|${day.date}` === key)) {
+          changes.push({
+            oblast_slug: oblastSlug, city_slug: citySlug, queue: snap.queue, day: day.label,
+            change_type: "removed",
+            summary: "Графік для цієї черги більше не публікується",
+            old_slots: null, new_slots: null,
+          });
+          upserts.push({ oblast_slug: oblastSlug, city_slug: citySlug, queue: snap.queue, schedule_date: day.date, fingerprint: "", day: day.label });
+        }
       }
     }
   }
@@ -248,7 +299,7 @@ async function checkCity(
   if (upserts.length > 0) {
     const { error } = await supabase
       .from("schedule_snapshots")
-      .upsert(upserts, { onConflict: "oblast_slug,city_slug,queue,day" });
+      .upsert(upserts, { onConflict: "oblast_slug,city_slug,queue,schedule_date" });
     if (error) throw new Error(`snapshot upsert: ${error.message}`);
   }
   if (changes.length > 0) {
@@ -257,8 +308,7 @@ async function checkCity(
       .insert(changes);
     if (error) throw new Error(`change log insert: ${error.message}`);
   }
-  // City-level check state: powers the honest "last checked" label and the
-  // unread red dot in the mini app.
+
   const nowIso = new Date().toISOString();
   const { error: stateErr } = await supabase
     .from("schedule_check_state")
@@ -270,8 +320,6 @@ async function checkCity(
     }, { onConflict: "oblast_slug,city_slug" });
   if (stateErr) throw new Error(`check state upsert: ${stateErr.message}`);
 
-  // Push a short heads-up to affected followers: the visual diff lives in the
-  // mini app, the message just tells them to check it.
   if (BOT_TOKEN && userNotifs.length > 0) {
     const seen = new Set<number>();
     for (const n of userNotifs) {
@@ -303,12 +351,12 @@ async function checkCity(
   return changes.length;
 }
 
-// ── Cities to check: ones users actually follow ───────────────
 async function getCitiesToCheck(): Promise<{ oblast_slug: string; city_slug: string }[]> {
   const { data, error } = await supabase
     .from("user_preferences")
     .select("oblast_slug, city_slug")
-    .not("city_slug", "is", null);
+    .not("city_slug", "is", null)
+    .not("oblast_slug", "is", null);
   if (error) throw error;
   const seen = new Set<string>();
   const list: { oblast_slug: string; city_slug: string }[] = [];
@@ -316,7 +364,7 @@ async function getCitiesToCheck(): Promise<{ oblast_slug: string; city_slug: str
     const key = `${r.oblast_slug}/${r.city_slug}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    list.push({ oblast_slug: r.oblast_slug ?? "", city_slug: r.city_slug! });
+    list.push({ oblast_slug: r.oblast_slug!, city_slug: r.city_slug! });
   }
   return list;
 }
@@ -342,30 +390,37 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const todayDate = getKyivDateISO();
+    const tomorrowDate = getTomorrowDateISO();
     const cities = await getCitiesToCheck();
     let totalChanges = 0;
     const checked: { city: string; changes: number }[] = [];
 
     for (const city of cities) {
       try {
-        let today: QueueSchedule[] = [];
-        let tomorrow: QueueSchedule[] = [];
+        let todaySchedules: QueueSchedule[] = [];
+        let tomorrowSchedules: QueueSchedule[] = [];
+        let todayOk = false;
+        let tomorrowOk = false;
+
         if (city.city_slug === "kyiv") {
-          today = await fetchYasnoSchedule(false);
-          tomorrow = await fetchYasnoSchedule(true);
+          const t = await fetchYasnoSchedule(false);
+          const tm = await fetchYasnoSchedule(true);
+          todaySchedules = t.schedules; todayOk = t.ok;
+          tomorrowSchedules = tm.schedules; tomorrowOk = tm.ok;
         } else {
-          const todayResp = await fetchWithTimeout(
-            `${BEZSVITLA_BASE}/${city.oblast_slug}/${city.city_slug}`,
-            { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
-          );
-          if (todayResp.ok) today = parseBezsvitla(await todayResp.text());
-          const tomorrowResp = await fetchWithTimeout(
-            `${BEZSVITLA_BASE}/${city.oblast_slug}/${city.city_slug}/grafik-na-zavtra`,
-            { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
-          );
-          if (tomorrowResp.ok) tomorrow = parseBezsvitla(await tomorrowResp.text());
+          const t = await fetchBezsvitlaSchedule(city.oblast_slug, city.city_slug, false);
+          const tm = await fetchBezsvitlaSchedule(city.oblast_slug, city.city_slug, true);
+          todaySchedules = t.schedules; todayOk = t.ok;
+          tomorrowSchedules = tm.schedules; tomorrowOk = tm.ok;
         }
-    const n = await checkCity(city.oblast_slug, city.city_slug, today, tomorrow);
+
+        const dayData = [
+          { date: todayDate, label: "today", schedules: todaySchedules, sourceOk: todayOk },
+          { date: tomorrowDate, label: "tomorrow", schedules: tomorrowSchedules, sourceOk: tomorrowOk },
+        ];
+
+        const n = await checkCity(city.oblast_slug, city.city_slug, dayData);
         totalChanges += n;
         checked.push({ city: city.city_slug, changes: n });
       } catch (cityErr) {
@@ -373,7 +428,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Retention cleanup
     await supabase
       .from("schedule_change_log")
       .delete()

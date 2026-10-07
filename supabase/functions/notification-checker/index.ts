@@ -14,8 +14,6 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 let cronSecretCache: { value: string; at: number } | null = null;
 
-// The shared cron secret lives in a private table; fetch it via the
-// service-role-only SQL function and cache briefly per instance.
 async function getCronSecret(): Promise<string | null> {
   if (cronSecretCache && Date.now() - cronSecretCache.at < 10 * 60 * 1000) {
     return cronSecretCache.value;
@@ -30,14 +28,11 @@ const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const YASNO_BASE = "https://app.yasno.ua/api/blackout-service/public/shutdowns";
 const BEZSVITLA_BASE = "https://bezsvitla.com.ua";
 
-type Slot = {
-  start: number;
-  end: number;
-  type: string;
-};
+type Slot = { start: number; end: number; type: string };
 
 type UserPref = {
   tg_user_id: number;
+  oblast_slug: string;
   city_slug: string;
   queue_group: string;
   notify_minutes_before: number;
@@ -66,19 +61,21 @@ function getKyivDateISO(): string {
   return now.toISOString().split("T")[0];
 }
 
-async function sendMessage(chatId: number, text: string) {
-  await fetch(`${TELEGRAM_API}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-    }),
-  });
+// Send a Telegram message and return true only if Telegram confirmed delivery.
+async function sendMessage(chatId: number, text: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`${TELEGRAM_API}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+    });
+    const json = await resp.json() as { ok?: boolean };
+    return !!json.ok;
+  } catch {
+    return false;
+  }
 }
 
-// ── Parse bezsvitla HTML ──────────────────────────────────────
 function parseBezsvitla(html: string, targetQueue: string): Slot[] {
   const queueMatches = [...html.matchAll(/Черга\s+(\d\.\d)/g)];
   for (let i = 0; i < queueMatches.length; i++) {
@@ -89,11 +86,9 @@ function parseBezsvitla(html: string, targetQueue: string): Slot[] {
       : sectionStart + 5000;
     const section = html.slice(sectionStart, sectionEnd);
     const slots: Slot[] = [];
-    const slotMatches = [...section.matchAll(
+    for (const m of section.matchAll(
       /bz-schedule-slot--(on|off)[^>]*>.*?(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/gs,
-    )];
-    for (const m of slotMatches) {
-      const status = m[1];
+    )) {
       const [h, min] = m[2].split(":").map(Number);
       const startMin = h * 60 + min;
       let endMin: number;
@@ -102,15 +97,41 @@ function parseBezsvitla(html: string, targetQueue: string): Slot[] {
         const [eh, em] = m[3].split(":").map(Number);
         endMin = eh * 60 + em;
       }
-      slots.push({
-        start: startMin,
-        end: endMin,
-        type: status === "off" ? "Definite" : "NotPlanned",
-      });
+      slots.push({ start: startMin, end: endMin, type: m[1] === "off" ? "Definite" : "NotPlanned" });
     }
     return slots;
   }
   return [];
+}
+
+// Fetch and parse all queues from bezsvitla for one city page.
+function parseBezsvitlaAll(html: string): Record<string, Slot[]> {
+  const result: Record<string, Slot[]> = {};
+  const queueMatches = [...html.matchAll(/Черга\s+(\d\.\d)/g)];
+  for (let i = 0; i < queueMatches.length; i++) {
+    const queueName = queueMatches[i][1];
+    const sectionStart = queueMatches[i].index! + queueMatches[i][0].length;
+    const sectionEnd = i + 1 < queueMatches.length
+      ? queueMatches[i + 1].index!
+      : sectionStart + 5000;
+    const section = html.slice(sectionStart, sectionEnd);
+    const slots: Slot[] = [];
+    for (const m of section.matchAll(
+      /bz-schedule-slot--(on|off)[^>]*>.*?(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/gs,
+    )) {
+      const [h, min] = m[2].split(":").map(Number);
+      const startMin = h * 60 + min;
+      let endMin: number;
+      if (m[3] === "24:00") endMin = 1440;
+      else {
+        const [eh, em] = m[3].split(":").map(Number);
+        endMin = eh * 60 + em;
+      }
+      slots.push({ start: startMin, end: endMin, type: m[1] === "off" ? "Definite" : "NotPlanned" });
+    }
+    result[queueName] = slots;
+  }
+  return result;
 }
 
 Deno.serve(async (req: Request) => {
@@ -127,12 +148,14 @@ Deno.serve(async (req: Request) => {
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
     const { data: users, error } = await supabase
       .from("user_preferences")
-      .select("tg_user_id, city_slug, queue_group, notify_minutes_before, notify_enabled")
+      .select("tg_user_id, oblast_slug, city_slug, queue_group, notify_minutes_before, notify_enabled")
       .eq("notify_enabled", true)
       .not("city_slug", "is", null)
-      .not("queue_group", "is", null);
+      .not("queue_group", "is", null)
+      .not("oblast_slug", "is", null);
 
     if (error) throw error;
     if (!users || users.length === 0) {
@@ -145,45 +168,46 @@ Deno.serve(async (req: Request) => {
     const currentMinutes = getKyivMinutes();
     let notifiedCount = 0;
 
-    // Group users by city to minimize fetches
-    const cityGroups = new Map<string, UserPref[]>();
+    // Group users by oblast/city so we fetch each source page once.
+    const cityGroups = new Map<string, { oblast: string; city: string; users: UserPref[] }>();
     for (const user of users as UserPref[]) {
-      if (!cityGroups.has(user.city_slug)) cityGroups.set(user.city_slug, []);
-      cityGroups.get(user.city_slug)!.push(user);
+      const key = `${user.oblast_slug}/${user.city_slug}`;
+      if (!cityGroups.has(key)) {
+        cityGroups.set(key, { oblast: user.oblast_slug, city: user.city_slug, users: [] });
+      }
+      cityGroups.get(key)!.users.push(user);
     }
 
-    for (const [citySlug, cityUsers] of cityGroups) {
+    for (const { oblast: oblastSlug, city: citySlug, users: cityUsers } of cityGroups.values()) {
       const slotsByQueue: Record<string, Slot[]> = {};
 
       if (citySlug === "kyiv") {
-        // Yasno API for Kyiv city
         const resp = await fetch(
           `${YASNO_BASE}/regions/25/dsos/902/planned-outages`,
-          { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
+          { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" } },
         );
         if (!resp.ok) continue;
         const planned = await resp.json();
         for (const [group, data] of Object.entries(planned)) {
           const todayData = (data as Record<string, unknown>)?.today as { slots: Slot[] } | undefined;
-          const todaySlots = todayData?.slots ?? [];
-          slotsByQueue[group] = todaySlots;
+          slotsByQueue[group] = todayData?.slots ?? [];
         }
       } else {
-        // Bezsvitla for oblast cities
         const resp = await fetch(
-          `${BEZSVITLA_BASE}/kyivska-oblast/${citySlug}`,
+          `${BEZSVITLA_BASE}/${oblastSlug}/${citySlug}`,
           { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
         );
         if (!resp.ok) continue;
         const html = await resp.text();
+        const parsed = parseBezsvitlaAll(html);
         for (const user of cityUsers) {
-          slotsByQueue[user.queue_group] = parseBezsvitla(html, user.queue_group);
+          slotsByQueue[user.queue_group] = parsed[user.queue_group] ?? [];
         }
       }
 
       for (const user of cityUsers) {
         const slots = slotsByQueue[user.queue_group];
-        if (!slots) continue;
+        if (!slots || slots.length === 0) continue;
 
         const definiteSlots = slots.filter((s) => s.type === "Definite");
         for (const slot of definiteSlots) {
@@ -194,14 +218,18 @@ Deno.serve(async (req: Request) => {
             minutesUntilOutage >= user.notify_minutes_before - 5
           ) {
             const eventStart = `${todayISO}T${minutesToTimeStr(slot.start)}:00`;
-            const { data: existing } = await supabase
-              .from("sent_notifications")
-              .select("id")
-              .eq("tg_user_id", user.tg_user_id)
-              .eq("event_start", eventStart)
-              .maybeSingle();
 
-            if (existing) continue;
+            // Claim the notification slot before sending: insert first,
+            // then send only if the insert succeeded (row was new).
+            const { error: insertErr } = await supabase
+              .from("sent_notifications")
+              .insert({
+                tg_user_id: user.tg_user_id,
+                event_start: eventStart,
+                event_type: "definite",
+              });
+
+            if (insertErr) continue; // already claimed by a concurrent run
 
             const timeStr = minutesToTimeStr(slot.start);
             const endStr = minutesToTimeStr(slot.end);
@@ -214,12 +242,16 @@ Deno.serve(async (req: Request) => {
               `Черга: ${user.queue_group}\n\n` +
               `Підготуйтеся: зарядіть пристрої 💡`;
 
-            await sendMessage(user.tg_user_id, message);
-            await supabase.from("sent_notifications").insert({
-              tg_user_id: user.tg_user_id,
-              event_start: eventStart,
-              event_type: "definite",
-            });
+            const sent = await sendMessage(user.tg_user_id, message);
+            if (!sent) {
+              // Delivery failed — remove the claim so the next run can retry.
+              await supabase
+                .from("sent_notifications")
+                .delete()
+                .eq("tg_user_id", user.tg_user_id)
+                .eq("event_start", eventStart);
+              continue;
+            }
             notifiedCount++;
           }
         }
@@ -233,7 +265,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     console.error("notification-checker error:", err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Internal error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

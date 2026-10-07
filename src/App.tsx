@@ -526,7 +526,7 @@ function Onboarding({
   notifyMinutes: number;
   setNotifyMinutes: (v: number) => void;
 }) {
-  const [citySearch, setCitySearch] = useState('');
+  const [citySearch, setCitySearch] = useState(() => selectedCity?.name ?? '');
   const filtered = useMemo(() => {
     if (!citySearch.trim()) return cities;
     const q = citySearch.toLowerCase();
@@ -1027,7 +1027,7 @@ function App() {
   // Red dot on the history button: set when the latest change for this city is
   // newer than the last time the user opened the changes tab.
   const [unseenChanges, setUnseenChanges] = useState(false);
-  const lastSeenChangeRef = useRef<string>(localStorage.getItem('lastSeenChangeAt') ?? '');
+  const lastSeenChangeRef = useRef<string>('');
   const [densityMenuOpen, setDensityMenuOpen] = useState(false);
 
   // Deep link from the bot's "schedule updated" notification: the button opens
@@ -1059,13 +1059,21 @@ function App() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [selectedOblast, selectedCity]);
 
-  // Opening the changes tab marks everything as seen.
+  // Opening the changes tab marks everything as seen — server-side so it
+  // travels with the user's Telegram account across devices/sessions.
   useEffect(() => {
     if (view !== 'changes') return;
     const ts = new Date().toISOString();
     lastSeenChangeRef.current = ts;
-    localStorage.setItem('lastSeenChangeAt', ts);
     setUnseenChanges(false);
+    const tg = getTelegramWebApp();
+    if (tg?.initData) {
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ initData: tg.initData, markChangesSeen: true }),
+      }).catch(() => { /* best-effort */ });
+    }
   }, [view]);
 
   // Apply the deep-linked screen once onboarding state is resolved and the
@@ -1148,6 +1156,7 @@ function App() {
           prefs?: {
             notify_enabled: boolean; notify_minutes_before: number;
             oblast_slug: string | null; city_slug: string | null; city_name: string | null; queue_group: string | null;
+            last_seen_changes_at: string | null;
           } | null;
         };
         if (cancelled) return;
@@ -1155,6 +1164,7 @@ function App() {
         if (prefs) {
           setNotifyEnabled(prefs.notify_enabled);
           setNotifyMinutes(prefs.notify_minutes_before);
+          if (prefs.last_seen_changes_at) lastSeenChangeRef.current = prefs.last_seen_changes_at;
           if (prefs.oblast_slug) {
             const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug);
             if (oblast) setSelectedOblast(oblast);
@@ -1211,60 +1221,59 @@ function App() {
     if (!tgUser || !selectedOblast || !selectedCity || !selectedGroup) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
+      const tgW = getTelegramWebApp();
+      if (!tgW?.initData) return;
       const prefKey = `${selectedOblast.slug}|${selectedCity.slug}|${selectedGroup}`;
-      // Compare against what is actually stored right now: confirm in the chat
-      // only when the stored city/queue differ from the current selection.
-      // The in-memory state may still be settling from the initial DB restore,
-      // so a stored-vs-selected comparison at save time is the only reliable check.
-      const { data: existing } = await supabase
-        .from('user_preferences')
-        .select('oblast_slug, city_slug, queue_group')
-        .eq('tg_user_id', tgUser.id)
-        .maybeSingle();
-      const storedKey = existing
-        ? `${(existing as { oblast_slug: string | null }).oblast_slug ?? ''}|${(existing as { city_slug: string | null }).city_slug ?? ''}|${(existing as { queue_group: string | null }).queue_group ?? ''}`
-        : '';
-      const changed = storedKey !== prefKey;
-      if (changed) {
-        const tgW = getTelegramWebApp();
-        if (tgW?.initData) {
-          try {
-            await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-              body: JSON.stringify({
-                initData: tgW.initData,
-                patch: {
-                  oblast_slug: selectedOblast.slug,
-                  city_slug: selectedCity.slug,
-                  city_name: selectedCity.name,
-                  queue_group: selectedGroup,
-                  notify_enabled: notifyEnabled,
-                  notify_minutes_before: notifyMinutes,
-                },
-              }),
-            });
-            await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-bot`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                'X-Internal-Secret': import.meta.env.VITE_SUPABASE_ANON_KEY,
+      try {
+        // Check stored prefs via the authenticated edge function to compare
+        // against current selection before saving.
+        const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+          body: JSON.stringify({ initData: tgW.initData }),
+        });
+        if (!r.ok) return;
+        const json = await r.json() as {
+          prefs?: { oblast_slug: string | null; city_slug: string | null; queue_group: string | null } | null;
+        };
+        const stored = json.prefs;
+        const storedKey = stored
+          ? `${stored.oblast_slug ?? ''}|${stored.city_slug ?? ''}|${stored.queue_group ?? ''}`
+          : '';
+        const changed = storedKey !== prefKey;
+        if (changed) {
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+            body: JSON.stringify({
+              initData: tgW.initData,
+              patch: {
+                oblast_slug: selectedOblast.slug,
+                city_slug: selectedCity.slug,
+                city_name: selectedCity.name,
+                queue_group: selectedGroup,
+                notify_enabled: notifyEnabled,
+                notify_minutes_before: notifyMinutes,
               },
-              body: JSON.stringify({
-                action: 'prefs_saved',
-                initData: tgW.initData,
-                city: selectedCity.name,
-                queue: selectedGroup,
-              }),
-            });
-          } catch { /* confirmation is best-effort */ }
+            }),
+          });
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-bot`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              action: 'prefs_saved',
+              initData: tgW.initData,
+              city: selectedCity.name,
+              queue: selectedGroup,
+            }),
+          });
+          setSaved(true); hapticNotification('success');
+          setTimeout(() => setSaved(false), 2000);
         }
-      }
-      if (changed) {
-        setSaved(true); hapticNotification('success');
-        setTimeout(() => setSaved(false), 2000);
-      }
+      } catch { /* best-effort */ }
     }, 1500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [tgUser, selectedOblast, selectedCity, selectedGroup, notifyEnabled, notifyMinutes]);
@@ -1760,12 +1769,13 @@ function App() {
               </div>
             )}
 
-            {/* Replay onboarding */}
+            {/* Replay onboarding — keep existing selections so the user can
+                just click through and only change what they want */}
             <button
               onClick={() => {
-                setObStep(0); setOnboarded(false); localStorage.removeItem('onboarded');
-                setSelectedOblast(null); setSelectedCity(null); setSelectedGroup('');
-                setTodaySchedule(null); setTomorrowSchedule(null);
+                const startStep = !selectedOblast ? 1 : !selectedCity ? 2 : !selectedGroup ? 3 : 1;
+                setObStep(startStep); setOnboarded(false); localStorage.removeItem('onboarded');
+                hapticImpact('light');
               }}
               className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-secondary-c transition-all hover:scale-[1.01]"
             >

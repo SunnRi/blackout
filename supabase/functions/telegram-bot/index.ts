@@ -68,11 +68,22 @@ type MiniAppConfirm = {
   queue: string;
 };
 
+// Mini apps stay open for hours; allow up to 24h on initData auth_date.
+const INIT_DATA_TTL_SECONDS = 24 * 60 * 60;
+
 function verifyInitData(initData: string): TGUser | null {
   const params = new URLSearchParams(initData);
   const hash = params.get("hash");
   if (!hash) return null;
   params.delete("hash");
+
+  const authDateStr = params.get("auth_date");
+  if (!authDateStr) return null;
+  const authDate = Number(authDateStr);
+  if (!Number.isFinite(authDate)) return null;
+  const ageSeconds = Date.now() / 1000 - authDate;
+  if (ageSeconds > INIT_DATA_TTL_SECONDS || ageSeconds < -60) return null;
+
   const dataCheckString = [...params.entries()]
     .map(([k, v]) => `${k}=${v}`)
     .sort()

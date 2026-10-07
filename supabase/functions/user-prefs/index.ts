@@ -16,12 +16,26 @@ const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 
 type TGUser = { id: number; username?: string };
 
-// Verify the HMAC-SHA256 signature Telegram puts on WebApp initData.
+// Telegram recommends rejecting initData older than a few minutes to prevent
+// replay. Mini apps stay open longer than that, so we allow up to 24h.
+const INIT_DATA_TTL_SECONDS = 24 * 60 * 60;
+
+// Verify the HMAC-SHA256 signature Telegram puts on WebApp initData and
+// reject stale payloads based on auth_date.
 function verifyInitData(initData: string): TGUser | null {
   const params = new URLSearchParams(initData);
   const hash = params.get("hash");
   if (!hash) return null;
   params.delete("hash");
+
+  // Check auth_date freshness before doing the expensive HMAC.
+  const authDateStr = params.get("auth_date");
+  if (!authDateStr) return null;
+  const authDate = Number(authDateStr);
+  if (!Number.isFinite(authDate)) return null;
+  const ageSeconds = Date.now() / 1000 - authDate;
+  if (ageSeconds > INIT_DATA_TTL_SECONDS || ageSeconds < -60) return null;
+
   const dataCheckString = [...params.entries()]
     .map(([k, v]) => `${k}=${v}`)
     .sort()
@@ -64,7 +78,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET") {
       const { data, error } = await supabase
         .from("user_preferences")
-        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group")
+        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at")
         .eq("tg_user_id", user.id)
         .maybeSingle();
       if (error) throw error;
@@ -74,7 +88,8 @@ Deno.serve(async (req: Request) => {
     }
 
     if (req.method === "POST") {
-      const patch = (body?.patch ?? {}) as Record<string, unknown>;
+      const bodyObj = body as { patch?: Record<string, unknown>; markChangesSeen?: boolean } | null;
+      const patch = (bodyObj?.patch ?? {}) as Record<string, unknown>;
       const clean: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
       if (typeof patch.notify_enabled === "boolean") clean.notify_enabled = patch.notify_enabled;
@@ -92,6 +107,9 @@ Deno.serve(async (req: Request) => {
       }
       if (typeof patch.queue_group === "string" && /^[\d.]{1,8}$/.test(patch.queue_group)) {
         clean.queue_group = patch.queue_group;
+      }
+      if (bodyObj?.markChangesSeen) {
+        clean.last_seen_changes_at = new Date().toISOString();
       }
 
       const { error } = await supabase
