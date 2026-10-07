@@ -453,6 +453,7 @@ function Onboarding({
   step, setStep, oblasts, selectedOblast, setSelectedOblast,
   cities, selectedCity, setSelectedCity, selectedGroup, setSelectedGroup,
   onFinish, scheduleLoading, citiesLoading, availableGroups,
+  tgUser, notifyEnabled, setNotifyEnabled, notifyMinutes, setNotifyMinutes,
 }: {
   step: number;
   setStep: (n: number) => void;
@@ -468,6 +469,11 @@ function Onboarding({
   scheduleLoading: boolean;
   citiesLoading: boolean;
   availableGroups: string[];
+  tgUser: { id: number; username?: string } | null;
+  notifyEnabled: boolean;
+  setNotifyEnabled: (v: boolean) => void;
+  notifyMinutes: number;
+  setNotifyMinutes: (v: number) => void;
 }) {
   const [citySearch, setCitySearch] = useState('');
   const filtered = useMemo(() => {
@@ -476,7 +482,7 @@ function Onboarding({
     return cities.filter((c) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
   }, [cities, citySearch]);
 
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   return (
     <div className="relative min-h-screen bg-primary-c" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -603,6 +609,65 @@ function Onboarding({
             </div>
           )}
 
+          {step === 4 && (
+            <div className="flex flex-1 flex-col items-center justify-center text-center fade-in-right">
+              <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-3xl accent-soft-bg">
+                <Bell className="h-12 w-12 accent-c" />
+              </div>
+              <h2 className="text-2xl font-extrabold text-primary-c">Сповіщення</h2>
+              <p className="mt-2 max-w-xs text-sm text-secondary-c">
+                Хочете отримувати повідомлення про відключення світла і за скільки хвилин попереджати?
+              </p>
+              {tgUser && (
+                <div className="d-card mt-5 w-full px-3.5 py-3 text-left">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {notifyEnabled ? <Bell className="h-3.5 w-3.5 accent-c" /> : <BellOff className="h-3.5 w-3.5 text-muted-c" />}
+                      <h3 className="text-xs font-bold text-primary-c">Сповіщення</h3>
+                    </div>
+                    <button
+                      onClick={() => { setNotifyEnabled(!notifyEnabled); hapticImpact('medium'); }}
+                      style={{ width: 38, height: 20, padding: 0, border: 'none', flexShrink: 0 }}
+                      className={`relative inline-block rounded-full transition-colors ${notifyEnabled ? 'accent-bg' : 'bg-black/10 dark:bg-white/10'}`}
+                      aria-label="Сповіщення"
+                    >
+                      <span
+                        style={{
+                          position: 'absolute', left: 2, top: 2, width: 16, height: 16,
+                          transform: notifyEnabled ? 'translateX(18px)' : 'translateX(0px)',
+                        }}
+                        className="block rounded-full bg-white shadow-sm transition-transform duration-200"
+                      />
+                    </button>
+                  </div>
+                  {notifyEnabled && (
+                    <div className="mt-2.5">
+                      <p className="mb-1.5 text-[11px] text-secondary-c">Попередити за:</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {[30, 60].map((mins) => (
+                          <button
+                            key={mins}
+                            onClick={() => { setNotifyMinutes(mins); hapticImpact('light'); }}
+                            className={`rounded-lg px-3 py-1.5 text-center text-xs font-semibold transition-all ${
+                              notifyMinutes === mins ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c'
+                            }`}
+                          >{mins} хв</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <p className="mt-2.5 flex items-center gap-1 text-[10px] text-muted-c">
+                    <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    Налаштування спільні з Telegram-ботом — змініть у будь-якому місці
+                  </p>
+                </div>
+              )}
+              <p className="mt-4 max-w-xs text-xs text-muted-c">
+                Цей крок можна пропустити — налаштувати сповіщення можна пізніше в налаштуваннях або в боті.
+              </p>
+            </div>
+          )}
+
         </div>
 
         <div className="mx-auto mt-6 flex w-full gap-2">
@@ -617,7 +682,7 @@ function Onboarding({
           )}
           <button
             onClick={() => {
-              if (step === 3) { onFinish(); hapticNotification('success'); }
+              if (step === 4) { onFinish(); hapticNotification('success'); }
               else { setStep(step + 1); hapticImpact('light'); }
             }}
             disabled={(step === 1 && !selectedOblast) || (step === 2 && !selectedCity) || (step === 3 && !selectedGroup)}
@@ -625,7 +690,8 @@ function Onboarding({
           >
             {step === 0 && <>Почнемо <ArrowRight className="h-5 w-5" /></>}
             {(step === 1 || step === 2) && <>Далі <ArrowRight className="h-5 w-5" /></>}
-            {step === 3 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
+            {step === 3 && <>Далі <ArrowRight className="h-5 w-5" /></>}
+            {step === 4 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
           </button>
         </div>
       </div>
@@ -936,6 +1002,9 @@ function App() {
           selectedCity={selectedCity} setSelectedCity={setSelectedCity}
           selectedGroup={selectedGroup} setSelectedGroup={setSelectedGroup}
           scheduleLoading={scheduleLoading} citiesLoading={citiesLoading} availableGroups={availableGroups}
+          tgUser={tgUser}
+          notifyEnabled={notifyEnabled} setNotifyEnabled={setNotifyEnabled}
+          notifyMinutes={notifyMinutes} setNotifyMinutes={setNotifyMinutes}
           onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); setView('schedule'); }}
         />
       </div>
@@ -1282,12 +1351,16 @@ function App() {
                   </div>
                   <button
                     onClick={() => { setNotifyEnabled(!notifyEnabled); hapticImpact('medium'); }}
-                    className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${notifyEnabled ? 'accent-bg' : 'bg-black/10 dark:bg-white/10'}`}
+                    style={{ width: 38, height: 20, padding: 0, border: 'none', flexShrink: 0 }}
+                    className={`relative inline-block rounded-full transition-colors ${notifyEnabled ? 'accent-bg' : 'bg-black/10 dark:bg-white/10'}`}
                     aria-label="Сповіщення"
                   >
                     <span
-                      className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200"
-                      style={{ transform: notifyEnabled ? 'translateX(16px)' : 'translateX(0px)' }}
+                      style={{
+                        position: 'absolute', left: 2, top: 2, width: 16, height: 16,
+                        transform: notifyEnabled ? 'translateX(18px)' : 'translateX(0px)',
+                      }}
+                      className="block rounded-full bg-white shadow-sm transition-transform duration-200"
                     />
                   </button>
                 </div>

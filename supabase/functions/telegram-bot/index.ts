@@ -107,7 +107,7 @@ function setChatMenuButton() {
 
 const mainKeyboard = {
   inline_keyboard: [
-    [{ text: "⚡️ Відкрити графік", web_app: { url: MINI_APP_URL } }],
+    [{ text: "📊 Відкрити графік", web_app: { url: MINI_APP_URL } }],
     [
       { text: "🟢 Мій статус", callback_data: "status" },
       { text: "🕒 Коли світло", callback_data: "next" },
@@ -120,14 +120,14 @@ function settingsKeyboard(notifyEnabled: boolean, minutes: number) {
   return {
     inline_keyboard: [
       [{
-        text: notifyEnabled ? "🔔 Сповіщення: УВІМКНЕНІ" : "🔕 Сповіщення: вимкнені",
+        text: notifyEnabled ? "🔔 Увімкнені ✓" : "🔕 Вимкнені",
         callback_data: "toggle_notify",
       }],
       [
-        { text: `${minutes === 30 ? "✅ " : ""}За 30 хв`, callback_data: "notify:30" },
-        { text: `${minutes === 60 ? "✅ " : ""}За 60 хв`, callback_data: "notify:60" },
+        { text: `${minutes === 30 ? "✓ " : ""}30 хв`, callback_data: "notify:30" },
+        { text: `${minutes === 60 ? "✓ " : ""}60 хв`, callback_data: "notify:60" },
       ],
-      [{ text: "« Назад", callback_data: "back" }],
+      [{ text: "⬅️ Назад", callback_data: "back" }],
     ],
   };
 }
@@ -270,13 +270,24 @@ async function handleStart(msg: TGMessage) {
   const name = msg.from?.first_name ?? "друг";
   await sendMessage(
     chatId,
-    `Привіт, <b>${name}</b>! ⚡️\n\n` +
-      `Я стежу за графіком відключень світла і скажу заздалегідь, коли його вимкнуть.\n\n` +
-      `🔔 <b>Що я вмію:</b>\n` +
-      `• Попереджаю про відключення за 30 або 60 хвилин\n` +
-      `• Повідомляю, якщо графік змінився\n` +
-      `• Показую статус і найближчі відключення\n\n` +
-      `Оберіть місто та чергу у веб-додатку, потім налаштуйте сповіщення тут 👇`,
+    `👋 Привіт, <b>${name}</b>!
+
+` +
+      `⚡️ <b>Світло Бот</b> — ваш помічник у графіках відключень.
+
+` +
+      `<b>Що я вмію:</b>
+` +
+      `🔔 — попереджаю про відключення заздалегідь
+` +
+      `📡 — повідомляю, якщо графік змінився
+` +
+      `🟢 — показую, чи є світло зараз
+` +
+      `🕒 — показую найближчі відключення
+
+` +
+      `<i>Спочатку оберіть місто та чергу у веб-додатку 📊, потім увімкніть сповіщення 🔔</i>`,
     mainKeyboard,
   );
 }
@@ -284,15 +295,27 @@ async function handleStart(msg: TGMessage) {
 async function handleHelp(chatId: number) {
   await sendMessage(
     chatId,
-    `<b>📖 Як користуватися</b>\n\n` +
-      `1. Натисніть «Відкрити графік» і оберіть область, місто та чергу\n` +
-      `2. Натисніть «Сповіщення»: увімкніть їх і оберіть, за скільки хвилин попереджати (30 або 60)\n` +
-      `3. Я напишу заздалегідь, коли світло вимкнуть, і повідомлю, якщо графік зміниться\n\n` +
-      `Налаштування сповіщень спільні між ботом і веб-додатком — змініть у будь-якому місці.\n\n` +
-      `<b>Команди:</b>\n` +
-      `/start — головне меню\n` +
-      `/status — чи є світло зараз\n` +
-      `/next — найближчі відключення\n` +
+    `<b>📖 Як користуватися</b>
+
+` +
+      `<b>1.</b> Натисніть «📊 Відкрити графік» і оберіть область, місто та чергу
+` +
+      `<b>2.</b> У «🔔 Сповіщення» увімкніть повідомлення й оберіть інтервал — 30 або 60 хвилин
+` +
+      `<b>3.</b> Я сам напишу, коли світло вимкнуть, і повідомлю про зміни графіка
+
+` +
+      `<i>Налаштування спільні між ботом і веб-додатком — змініть у будь-якому місці.</i>
+
+` +
+      `<b>⚙️ Команди</b>
+` +
+      `/start — головне меню
+` +
+      `/status — чи є світло зараз
+` +
+      `/next — найближчі відключення
+` +
       `/help — ця довідка`,
     mainKeyboard,
   );
@@ -303,10 +326,16 @@ async function handleSettings(chatId: number, tgUserId: number, editOf?: number)
   const enabled = pref?.notify_enabled ?? false;
   const minutes = pref?.notify_minutes_before ?? 60;
   const text =
-    `<b>🔔 Налаштування сповіщень</b>\n\n` +
-    `Я напишу заздалегідь, коли світло вимкнуть, і повідомлю, якщо графік зміниться.\n\n` +
-    `Оберіть, за скільки хвилин попереджати про відключення.\n\n` +
-    `<i>Ці налаштування спільні з веб-додатком.</i>`;
+    `<b>🔔 Налаштування сповіщень</b>
+
+` +
+    `Попереджу про відключення заздалегідь і повідомляю про зміни графіка.
+
+` +
+    `<b>За скільки хвилин попереджати:</b>
+
+` +
+    `<i>Спільно з веб-додатком 📊</i>`;
   const keyboard = settingsKeyboard(enabled, minutes);
   if (editOf) {
     await editMessage(chatId, editOf, text, keyboard);
@@ -362,16 +391,17 @@ async function handleStatus(chatId: number, tgUserId: number) {
   let body: string;
   if (isOff) {
     const until = current ? formatDuration(current.end - cur) : "";
-    body = `🔴 <b>Світла немає</b>\n` +
-      `Вернеться о <b>${minutesToTime(current!.end)}</b> · через ${until}`;
-    if (nextOn) body += `\n\n🟢 Далі світло: <b>${minutesToTime(nextOn.start)}–${minutesToTime(nextOn.end)}</b>`;
+    body = `🔴 <b>Світла немає</b>
+` +
+      `⏱ Вернеться о <b>${minutesToTime(current!.end)}</b> · через ${until}`;
+    if (nextOn) body += `\n\n🟢 Далі світло: <b>${minutesToTime(nextOn.start)} – ${minutesToTime(nextOn.end)}</b>`;
   } else {
     body = `🟢 <b>Світло є</b>`;
-    if (current) body += `\nДо ${minutesToTime(current.end)} · ${formatDuration(current.end - cur)}`;
+    if (current) body += `\n⏱ До ${minutesToTime(current.end)} · ${formatDuration(current.end - cur)}`;
     if (nextOut) {
       const mins = nextOut.start - cur;
       body += `\n\n🔴 Відключення о <b>${minutesToTime(nextOut.start)}</b> · через ${formatDuration(mins)}`;
-      body += `\nБез світла до ${minutesToTime(nextOut.end)}`;
+      body += `\n🔌 Без світла до ${minutesToTime(nextOut.end)}`;
     } else {
       body += `\n\n✅ Більше відключень сьогодні не заплановано`;
     }
@@ -379,7 +409,7 @@ async function handleStatus(chatId: number, tgUserId: number) {
 
   await sendMessage(
     chatId,
-    `${body}\n\n📍 ${pref.city_slug} · черга ${pref.queue_group}`,
+    `${body}\n\n───────────\n📍 ${pref.city_slug} · черга ${pref.queue_group}`,
     mainKeyboard,
   );
 }
@@ -420,28 +450,30 @@ async function handleNext(chatId: number, tgUserId: number) {
     .filter((s) => s.type === "Definite" && s.end > cur)
     .sort((a, b) => a.start - b.start);
 
-  let text = `🕒 <b>Найближчі відключення</b>\n📍 ${pref.city_slug} · черга ${pref.queue_group}\n`;
+  let text = `🕒 <b>Найближчі відключення</b>
+📍 ${pref.city_slug} · черга ${pref.queue_group}
+───────────`;
 
   if (offToday.length > 0) {
-    text += `\n<b>Сьогодні:</b>\n`;
+    text += `\n\n<b>📅 Сьогодні:</b>\n`;
     for (const s of offToday.slice(0, 4)) {
       const active = cur >= s.start && cur < s.end;
-      text += `${active ? "🔴" : "▪️"} <b>${minutesToTime(s.start)}–${minutesToTime(s.end)}</b> · ${formatDuration(s.end - s.start)}${active ? " · зараз" : ""}\n`;
+      text += `${active ? "🔴" : "▫️"} <b>${minutesToTime(s.start)} – ${minutesToTime(s.end)}</b> · ${formatDuration(s.end - s.start)}${active ? " · <i>зараз</i>" : ""}\n`;
     }
   } else {
-    text += `\n✅ Сьогодні відключень більше немає\n`;
+    text += `\n\n✅ Сьогодні відключень більше немає`;
   }
 
   const offTomorrow = tomorrowSlots.filter((s) => s.type === "Definite");
   if (offTomorrow.length > 0) {
-    text += `\n<b>Завтра:</b>\n`;
+    text += `\n\n<b>🌙 Завтра:</b>\n`;
     for (const s of offTomorrow.slice(0, 4)) {
-      text += `▫️ <b>${minutesToTime(s.start)}–${minutesToTime(s.end)}</b> · ${formatDuration(s.end - s.start)}\n`;
+      text += `▫️ <b>${minutesToTime(s.start)} – ${minutesToTime(s.end)}</b> · ${formatDuration(s.end - s.start)}\n`;
     }
   } else if (tomorrowSlots.length > 0) {
-    text += `\n🟢 Завтра відключень не заплановано\n`;
+    text += `\n\n🟢 Завтра відключень не заплановано`;
   } else {
-    text += `\n📭 Графік на завтра ще не опубліковано\n`;
+    text += `\n\n📭 Графік на завтра ще не опубліковано`;
   }
 
   await sendMessage(chatId, text, mainKeyboard);
