@@ -536,13 +536,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    if (req.method === "POST") {
-      const body = await req.json().catch(() => null);
-      if (body && typeof body === "object" && (body as MiniAppConfirm).action === "prefs_saved") {
-        return await handlePrefsSaved(body as MiniAppConfirm);
-      }
-    }
-
     if (req.method === "GET") {
       const url = new URL(req.url);
       if (url.searchParams.get("setup") === "true") {
@@ -560,7 +553,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const update: TGUpdate = await req.json();
+    // Read the body once, then dispatch: Telegram webhook updates vs mini-app
+    // confirmations arrive as POSTs to the same function.
+    const body: unknown = await req.json();
+    if (
+      body && typeof body === "object" && "action" in body &&
+      (body as { action?: unknown }).action === "prefs_saved"
+    ) {
+      return await handlePrefsSaved(body as MiniAppConfirm);
+    }
+
+    const update = body as TGUpdate;
 
     if (update.message?.text?.startsWith("/")) {
       const chatId = update.message.chat.id;
