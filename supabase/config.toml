@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.schedule-change-checker]
 verify_jwt = false
+
+[functions.user-prefs]
+verify_jwt = false

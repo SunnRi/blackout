@@ -17,6 +17,20 @@ const YASNO_REGION_ID = 25;
 const YASNO_DSO_ID = 902;
 
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
+let cronSecretCache: { value: string; at: number } | null = null;
+
+// The shared cron secret lives in a private table; fetch it via the
+// service-role-only SQL function and cache briefly per instance.
+async function getCronSecret(): Promise<string | null> {
+  if (cronSecretCache && Date.now() - cronSecretCache.at < 10 * 60 * 1000) {
+    return cronSecretCache.value;
+  }
+  const { data, error } = await supabase.rpc("get_cron_secret");
+  if (error || typeof data !== "string") return null;
+  cronSecretCache = { value: data, at: Date.now() };
+  return data;
+}
+
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 const RETENTION_DAYS = 14;
@@ -313,6 +327,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const secret = req.headers.get("x-internal-secret");
+    const expected = await getCronSecret();
+    if (!expected || secret !== expected) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     const url = new URL(req.url);
     if (url.searchParams.get("endpoint") !== "check") {
       return new Response(JSON.stringify({ error: "Unknown endpoint" }), {

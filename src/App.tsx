@@ -1091,18 +1091,26 @@ function App() {
 
   // Notification settings are shared with the Telegram bot: refresh them
   // whenever the user opens the settings screen so bot-side edits show up.
+  // Goes through the user-prefs edge function, which verifies the Telegram
+  // initData signature server-side before returning anything.
   useEffect(() => {
     if (view !== 'settings' || !tgUser) return;
-    supabase.from('user_preferences')
-      .select('notify_enabled, notify_minutes_before')
-      .eq('tg_user_id', tgUser.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) return;
-        const prefs = data as Pick<UserPreferences, 'notify_enabled' | 'notify_minutes_before'>;
-        setNotifyEnabled(prefs.notify_enabled);
-        setNotifyMinutes(prefs.notify_minutes_before);
-      });
+    const tg = getTelegramWebApp();
+    if (!tg?.initData) return;
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ initData: tg.initData }),
+    })
+      .then(async (r) => {
+        if (!r.ok) return;
+        const json = await r.json() as { prefs?: { notify_enabled: boolean; notify_minutes_before: number } | null };
+        if (json.prefs) {
+          setNotifyEnabled(json.prefs.notify_enabled);
+          setNotifyMinutes(json.prefs.notify_minutes_before);
+        }
+      })
+      .catch(() => { /* settings stay local */ });
   }, [view, tgUser]);
 
   useEffect(() => {
@@ -1123,35 +1131,66 @@ function App() {
 
   // Load saved settings right away: if the user already picked a city and queue,
   // restore them and skip onboarding even when the local flag was lost.
+  // The restore itself still needs the city catalog to map slugs -> names.
   useEffect(() => {
     if (!tgUser || oblasts.length === 0) return;
+    const tg = getTelegramWebApp();
+    if (!tg?.initData) { setPrefsChecked(true); return; }
     let cancelled = false;
-    supabase.from('user_preferences').select('*').eq('tg_user_id', tgUser.id).maybeSingle()
-      .then(({ data }) => {
-        if (cancelled || !data) { setPrefsChecked(true); return; }
-        const prefs = data as UserPreferences;
-        setNotifyEnabled(prefs.notify_enabled);
-        setNotifyMinutes(prefs.notify_minutes_before);
-        if (prefs.oblast_slug) {
-          const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug);
-          if (oblast) setSelectedOblast(oblast);
-        }
-        if (prefs.city_slug && prefs.queue_group) {
-          setOnboarded(true);
-          localStorage.setItem('onboarded', '1');
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ initData: tg.initData }),
+    })
+      .then(async (r) => {
+        if (!r.ok) { setPrefsChecked(true); return; }
+        const json = await r.json() as {
+          prefs?: {
+            notify_enabled: boolean; notify_minutes_before: number;
+            oblast_slug: string | null; city_slug: string | null; city_name: string | null; queue_group: string | null;
+          } | null;
+        };
+        if (cancelled) return;
+        const prefs = json.prefs;
+        if (prefs) {
+          setNotifyEnabled(prefs.notify_enabled);
+          setNotifyMinutes(prefs.notify_minutes_before);
+          if (prefs.oblast_slug) {
+            const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug);
+            if (oblast) setSelectedOblast(oblast);
+          }
+          if (prefs.city_slug && prefs.queue_group) {
+            if (prefs.city_name) setSelectedCity({ slug: prefs.city_slug, name: prefs.city_name });
+            setOnboarded(true);
+            localStorage.setItem('onboarded', '1');
+          }
         }
         setPrefsChecked(true);
-      });
+      })
+      .catch(() => { if (!cancelled) setPrefsChecked(true); });
     return () => { cancelled = true; };
   }, [tgUser, oblasts]);
 
   // Merge DB queue/city once cities arrive, without touching onboarding state.
   useEffect(() => {
     if (!tgUser || !onboarded || cities.length === 0) return;
-    supabase.from('user_preferences').select('*').eq('tg_user_id', tgUser.id).maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          const prefs = data as UserPreferences;
+    const tg = getTelegramWebApp();
+    if (!tg?.initData) return;
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ initData: tg.initData }),
+    })
+      .then(async (r) => {
+        if (!r.ok) return;
+        const json = await r.json() as {
+          prefs?: {
+            notify_enabled: boolean; notify_minutes_before: number;
+            oblast_slug: string | null; city_slug: string | null; queue_group: string | null;
+          } | null;
+        };
+        const prefs = json.prefs;
+        if (prefs) {
           setNotifyEnabled(prefs.notify_enabled);
           setNotifyMinutes(prefs.notify_minutes_before);
           if (prefs.oblast_slug) {
@@ -1164,7 +1203,8 @@ function App() {
           }
           if (prefs.queue_group) setSelectedGroup(prefs.queue_group);
         }
-      });
+      })
+      .catch(() => { /* keep local state */ });
   }, [tgUser, onboarded, oblasts, cities]);
 
   useEffect(() => {
@@ -1186,26 +1226,34 @@ function App() {
         : '';
       const changed = storedKey !== prefKey;
       if (changed) {
-        await supabase.from('user_preferences').upsert({
-          tg_user_id: tgUser.id, tg_username: tgUser.username ?? null,
-          oblast_slug: selectedOblast.slug,
-          city_slug: selectedCity.slug, city_name: selectedCity.name,
-          queue_group: selectedGroup,
-          notify_enabled: notifyEnabled, notify_minutes_before: notifyMinutes,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'tg_user_id' });
-        const tg = getTelegramWebApp();
-        if (tg?.initData) {
+        const tgW = getTelegramWebApp();
+        if (tgW?.initData) {
           try {
+            await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+              body: JSON.stringify({
+                initData: tgW.initData,
+                patch: {
+                  oblast_slug: selectedOblast.slug,
+                  city_slug: selectedCity.slug,
+                  city_name: selectedCity.name,
+                  queue_group: selectedGroup,
+                  notify_enabled: notifyEnabled,
+                  notify_minutes_before: notifyMinutes,
+                },
+              }),
+            });
             await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-bot`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'X-Internal-Secret': import.meta.env.VITE_SUPABASE_ANON_KEY,
               },
               body: JSON.stringify({
                 action: 'prefs_saved',
-                initData: tg.initData,
+                initData: tgW.initData,
                 city: selectedCity.name,
                 queue: selectedGroup,
               }),

@@ -12,6 +12,20 @@ const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
+let cronSecretCache: { value: string; at: number } | null = null;
+
+// The shared cron secret lives in a private table; fetch it via the
+// service-role-only SQL function and cache briefly per instance.
+async function getCronSecret(): Promise<string | null> {
+  if (cronSecretCache && Date.now() - cronSecretCache.at < 10 * 60 * 1000) {
+    return cronSecretCache.value;
+  }
+  const { data, error } = await supabase.rpc("get_cron_secret");
+  if (error || typeof data !== "string") return null;
+  cronSecretCache = { value: data, at: Date.now() };
+  return data;
+}
+
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const YASNO_BASE = "https://app.yasno.ua/api/blackout-service/public/shutdowns";
 const BEZSVITLA_BASE = "https://bezsvitla.com.ua";
@@ -105,6 +119,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const secret = req.headers.get("x-internal-secret");
+    const expected = await getCronSecret();
+    if (!expected || secret !== expected) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     const { data: users, error } = await supabase
       .from("user_preferences")
       .select("tg_user_id, city_slug, queue_group, notify_minutes_before, notify_enabled")

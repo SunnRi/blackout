@@ -591,11 +591,41 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Telegram's webhook calls carry the shared secret header; the mini app's
+    // "prefs saved" confirmation authenticates via initData signature instead.
+    // GET ?setup=true is allowed so the webhook can be (re)registered, but it
+    // performs no user actions.
+    const secretHeader = req.headers.get("x-telegram-bot-api-secret-token") ??
+      req.headers.get("x-internal-secret");
+    const webhookSecret = BOT_TOKEN.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) || "bot-webhook";
+    const isSetupGet = req.method === "GET" &&
+      new URL(req.url).searchParams.get("setup") === "true";
+    let body: unknown = null;
+    if (secretHeader !== BOT_TOKEN && secretHeader !== webhookSecret && !isSetupGet) {
+      body = await req.json().catch(() => null);
+      const action = body && typeof body === "object" && "action" in body
+        ? (body as { action?: unknown }).action
+        : null;
+      if (action !== "prefs_saved") {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    } else if (req.method === "POST") {
+      body = await req.json().catch(() => null);
+    }
+
     if (req.method === "GET") {
       const url = new URL(req.url);
       if (url.searchParams.get("setup") === "true") {
         const webhookUrl = `${url.origin.replace(/^http:/, "https:")}/functions/v1/telegram-bot`;
-        const wb = await tgCall("setWebhook", { url: webhookUrl });
+        // Telegram requires the secret token to be A-Z, a-z, 0-9, _ and - only.
+        const webhookSecret = BOT_TOKEN.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) || "bot-webhook";
+        const wb = await tgCall("setWebhook", {
+          url: webhookUrl,
+          secret_token: webhookSecret,
+        });
         const menu = await setChatMenuButton();
         return new Response(
           JSON.stringify({ webhook: wb, menu_button: menu }),
@@ -608,9 +638,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Read the body once, then dispatch: Telegram webhook updates vs mini-app
-    // confirmations arrive as POSTs to the same function.
-    const body: unknown = await req.json();
+    // Read the body once above, then dispatch: Telegram webhook updates vs
+    // mini-app confirmations arrive as POSTs to the same function.
     if (
       body && typeof body === "object" && "action" in body &&
       (body as { action?: unknown }).action === "prefs_saved"
