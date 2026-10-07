@@ -1,36 +1,22 @@
-import { supabase } from './supabase';
-
 const YASNO_API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/yasno-api`;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 async function yasnoFetch(path: string, params?: Record<string, string>): Promise<unknown> {
-  const url = new URL(YASNO_API_URL);
-  // The edge function uses path from pathname, so we append as part of the path
-  const fullUrl = `${YASNO_API_URL}${path}`;
-  const u = new URL(fullUrl);
+  const u = new URL(`${YASNO_API_URL}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       u.searchParams.set(k, v);
     }
   }
 
-  const { data, error } = await supabase.functions.invoke('yasno-api', {
-    method: 'GET',
-    url: u.toString(),
+  const resp = await fetch(u.toString(), {
+    headers: {
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
   });
-
-  // Fallback to fetch if invoke doesn't support URL params properly
-  if (error) {
-    const resp = await fetch(u.toString(), {
-      headers: {
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!resp.ok) throw new Error(`Yasno API error: ${resp.status}`);
-    return resp.json();
-  }
-
-  return data;
+  if (!resp.ok) throw new Error(`Yasno API error: ${resp.status}`);
+  return resp.json();
 }
 
 export type YasnoRegion = {
