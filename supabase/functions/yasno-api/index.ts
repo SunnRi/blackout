@@ -6,7 +6,98 @@ const corsHeaders = {
 };
 
 const YASNO_BASE = "https://app.yasno.ua/api/blackout-service/public/shutdowns";
+const BEZSVITLA_BASE = "https://bezsvitla.com.ua";
 
+// ── Kyiv city via Yasno API (region 25, dso 902) ──────────────
+const YASNO_REGION_ID = 25;
+const YASNO_DSO_ID = 902;
+
+type Slot = {
+  start: number; // minutes from midnight
+  end: number;
+  type: string; // "Definite" | "NotPlanned" | "on" | "off"
+};
+
+type QueueSchedule = {
+  queue: string;
+  slots: Slot[];
+};
+
+type CitySchedule = {
+  city: string;
+  source: string;
+  updated: string | null;
+  schedules: QueueSchedule[];
+};
+
+// ── Parse bezsvitla HTML to extract schedule data ─────────────
+function parseBezsvitla(html: string): QueueSchedule[] {
+  const results: QueueSchedule[] = [];
+  const queuePattern = /Черга\s+(\d\.\d)/g;
+  const slotPattern =
+    /bz-schedule-slot--(on|off)[^>]*>.*?(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/gs;
+
+  // Split by "Черга X.X" to isolate each queue section
+  const sections = html.split(/Черга\s+\d\.\d/);
+  const queueMatches = [...html.matchAll(/Черга\s+(\d\.\d)/g)];
+
+  for (let i = 0; i < queueMatches.length; i++) {
+    const queueName = queueMatches[i][1];
+    const sectionStart = queueMatches[i].index! + queueMatches[i][0].length;
+    const sectionEnd = i + 1 < queueMatches.length
+      ? queueMatches[i + 1].index!
+      : sectionStart + 5000;
+    const section = html.slice(sectionStart, sectionEnd);
+
+    const slots: Slot[] = [];
+    const slotMatches = [...section.matchAll(
+      /bz-schedule-slot--(on|off)[^>]*>.*?(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/gs,
+    )];
+
+    for (const m of slotMatches) {
+      const status = m[1]; // "on" or "off"
+      const startStr = m[2];
+      const endStr = m[3];
+      const startMin = timeToMinutes(startStr);
+      let endMin = timeToMinutes(endStr);
+      if (endStr === "24:00") endMin = 1440;
+
+      slots.push({
+        start: startMin,
+        end: endMin,
+        type: status === "off" ? "Definite" : "NotPlanned",
+      });
+    }
+
+    if (slots.length > 0) {
+      results.push({ queue: queueName, slots });
+    }
+  }
+
+  return results;
+}
+
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// ── Fetch with timeout ────────────────────────────────────────
+async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, {
+      ...opts,
+      signal: controller.signal,
+    });
+    return resp;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Main handler ──────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -15,86 +106,159 @@ Deno.serve(async (req: Request) => {
   try {
     const url = new URL(req.url);
     const params = url.searchParams;
-
-    const endpoint = params.get("endpoint") || "regions";
-    const regionId = params.get("regionId");
-    const dsoId = params.get("dsoId");
-
-    let yasnoUrl: string;
+    const endpoint = params.get("endpoint") || "cities";
 
     switch (endpoint) {
-      case "regions": {
-        yasnoUrl = `${YASNO_BASE}/addresses/v2/regions`;
-        break;
-      }
-      case "planned-outages": {
-        if (!regionId || !dsoId) {
-          return jsonError("regionId and dsoId are required", 400);
+      // ── Kyiv oblast cities from bezsvitla ──────────────────
+      case "cities": {
+        const resp = await fetchWithTimeout(`${BEZSVITLA_BASE}/kyivska-oblast`, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" },
+        });
+        const html = await resp.text();
+        // Extract city links
+        const cityPattern = /href="\/kyivska-oblast\/([a-z-]+)"/g;
+        const cities: { slug: string; name: string }[] = [];
+        const seen = new Set<string>();
+        const matches = [...html.matchAll(cityPattern)];
+        for (const m of matches) {
+          const slug = m[1];
+          if (slug === "grafik-na-zavtra") continue;
+          if (seen.has(slug)) continue;
+          seen.add(slug);
+          // Convert slug to readable name
+          const name = slug
+            .split("-")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ");
+          cities.push({ slug, name });
         }
-        yasnoUrl = `${YASNO_BASE}/regions/${regionId}/dsos/${dsoId}/planned-outages`;
-        break;
+        // Add Kyiv city as a special entry
+        cities.unshift({ slug: "kyiv", name: "Київ (місто)" });
+        return jsonResponse(cities);
       }
-      case "probable-outages": {
-        if (!regionId || !dsoId) {
-          return jsonError("regionId and dsoId are required", 400);
+
+      // ── Schedule for a specific city ───────────────────────
+      case "schedule": {
+        const citySlug = params.get("city");
+        if (!citySlug) return jsonError("city is required", 400);
+
+        if (citySlug === "kyiv") {
+          // Use Yasno API for Kyiv city
+          const plannedResp = await fetchWithTimeout(
+            `${YASNO_BASE}/regions/${YASNO_REGION_ID}/dsos/${YASNO_DSO_ID}/planned-outages`,
+            { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
+          );
+          if (!plannedResp.ok) {
+            return jsonError(`Yasno API returned ${plannedResp.status}`, plannedResp.status);
+          }
+          const planned = await plannedResp.json();
+          // Transform to unified format
+          const schedules: QueueSchedule[] = [];
+          for (const [group, data] of Object.entries(planned)) {
+            const todaySlots = (data as any)?.today?.slots || [];
+            schedules.push({ queue: group, slots: todaySlots });
+          }
+          const result: CitySchedule = {
+            city: "kyiv",
+            source: "yasno",
+            updated: (planned["1.1"] as any)?.updatedOn || null,
+            schedules,
+          };
+          return jsonResponse(result);
         }
-        yasnoUrl = `${YASNO_BASE}/probable-outages?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}`;
-        break;
-      }
-      case "streets": {
-        const query = params.get("query");
-        if (!regionId || !dsoId || !query) {
-          return jsonError("regionId, dsoId, and query are required", 400);
+
+        // Use bezsvitla for oblast cities
+        const resp = await fetchWithTimeout(
+          `${BEZSVITLA_BASE}/kyivska-oblast/${citySlug}`,
+          { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
+        );
+        if (!resp.ok) {
+          return jsonError(`Failed to fetch city page: ${resp.status}`, resp.status);
         }
-        yasnoUrl = `${YASNO_BASE}/addresses/v2/streets?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&query=${encodeURIComponent(query)}`;
-        break;
+        const html = await resp.text();
+        const schedules = parseBezsvitla(html);
+
+        // Extract updated time
+        const updatedMatch = html.match(/Оновлено\s+([\d.]+\s+[\d:]+)/);
+        const updated = updatedMatch ? updatedMatch[1] : null;
+
+        const result: CitySchedule = {
+          city: citySlug,
+          source: "bezsvitla",
+          updated,
+          schedules,
+        };
+        return jsonResponse(result);
       }
-      case "houses": {
-        const streetId = params.get("streetId");
-        const query = params.get("query");
-        if (!regionId || !dsoId || !streetId || !query) {
-          return jsonError("regionId, dsoId, streetId, and query are required", 400);
+
+      // ── Tomorrow schedule for a city ───────────────────────
+      case "tomorrow": {
+        const citySlug = params.get("city");
+        if (!citySlug) return jsonError("city is required", 400);
+
+        if (citySlug === "kyiv") {
+          const plannedResp = await fetchWithTimeout(
+            `${YASNO_BASE}/regions/${YASNO_REGION_ID}/dsos/${YASNO_DSO_ID}/planned-outages`,
+            { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
+          );
+          const planned = await plannedResp.json();
+          const schedules: QueueSchedule[] = [];
+          for (const [group, data] of Object.entries(planned)) {
+            const tomorrowSlots = (data as any)?.tomorrow?.slots || [];
+            if (tomorrowSlots.length > 0) {
+              schedules.push({ queue: group, slots: tomorrowSlots });
+            }
+          }
+          const result: CitySchedule = {
+            city: "kyiv",
+            source: "yasno",
+            updated: (planned["1.1"] as any)?.updatedOn || null,
+            schedules,
+          };
+          return jsonResponse(result);
         }
-        yasnoUrl = `${YASNO_BASE}/addresses/v2/houses?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&streetId=${encodeURIComponent(streetId)}&query=${encodeURIComponent(query)}`;
-        break;
-      }
-      case "group": {
-        const streetId = params.get("streetId");
-        const houseId = params.get("houseId");
-        if (!regionId || !dsoId || !streetId || !houseId) {
-          return jsonError("regionId, dsoId, streetId, and houseId are required", 400);
+
+        // bezsvitla tomorrow
+        const resp = await fetchWithTimeout(
+          `${BEZSVITLA_BASE}/kyivska-oblast/${citySlug}/grafik-na-zavtra`,
+          { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
+        );
+        if (!resp.ok) {
+          // No tomorrow schedule available
+          return jsonResponse({
+            city: citySlug,
+            source: "bezsvitla",
+            updated: null,
+            schedules: [],
+          });
         }
-        yasnoUrl = `${YASNO_BASE}/addresses/v2/group?regionId=${encodeURIComponent(regionId)}&dsoId=${encodeURIComponent(dsoId)}&streetId=${encodeURIComponent(streetId)}&houseId=${encodeURIComponent(houseId)}`;
-        break;
+        const html = await resp.text();
+        const schedules = parseBezsvitla(html);
+        const updatedMatch = html.match(/Оновлено\s+([\d.]+\s+[\d:]+)/);
+        const updated = updatedMatch ? updatedMatch[1] : null;
+        const result: CitySchedule = {
+          city: citySlug,
+          source: "bezsvitla",
+          updated,
+          schedules,
+        };
+        return jsonResponse(result);
       }
+
       default:
         return jsonError(`Unknown endpoint: ${endpoint}`, 404);
     }
-
-    const resp = await fetch(yasnoUrl, {
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (compatible; PowerOutageBot/1.0)",
-      },
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text();
-      return new Response(
-        JSON.stringify({ error: `Yasno API returned ${resp.status}`, detail: body }),
-        { status: resp.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const data = await resp.json();
-    return new Response(JSON.stringify(data), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
   } catch (err) {
     console.error("yasno-api error:", err);
     return jsonError(err.message, 500);
   }
 });
+
+function jsonResponse(data: unknown) {
+  return new Response(JSON.stringify(data), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 function jsonError(message: string, status: number) {
   return new Response(
