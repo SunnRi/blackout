@@ -322,22 +322,19 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
       </div>
 
       <div className="d-card graph-aura p-3">
-        <div className="flex h-14 items-end gap-[2px]" style={{ padding: '0 1px' }}>
+        <div className="flex h-12 gap-[3px]" style={{ padding: '0 1px' }}>
           {slots24.map(({ hour, status }) => {
-            const isCurrent = isToday && currentMin >= hour * 60 && currentMin < (hour + 1) * 60;
             const isPast = isToday && currentMin >= (hour + 1) * 60;
 
             let barClass = 'tl-on';
             if (status === 'off') barClass = 'tl-off';
             else if (status === 'partial') barClass = 'tl-partial';
-            const heightPct = status === 'on' ? 100 : status === 'partial' ? 62 : 78;
 
             return (
-              <div key={hour} className="graph-col flex h-full flex-1 flex-col justify-end"
-                data-tip={`${String(hour).padStart(2, '0')}:00 · ${status === 'on' ? 'є світло' : status === 'off' ? 'без світла' : 'частково'}`}>
+              <div key={hour} className="flex h-full flex-1">
                 <div
-                  className={`graph-bar-anim bar-shine relative w-full rounded-t-md ${barClass} ${isPast ? 'tl-past' : ''}`}
-                  style={{ height: `${heightPct}%`, animationDelay: `${hour * 0.03}s` }}
+                  className={`graph-bar-anim relative w-full rounded-[5px] ${barClass} ${isPast ? 'tl-past' : ''}`}
+                  style={{ animationDelay: `${hour * 0.03}s` }}
                 />
               </div>
             );

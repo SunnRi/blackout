@@ -661,24 +661,6 @@
 }
 .tl-now { animation: tlBreathe 2.4s ease-in-out infinite; transform-origin: bottom; }
 .tl-now > div:first-child { transform: translateX(-50%); }
-.graph-col:hover::after {
-  content: attr(data-tip);
-  position: absolute;
-  top: -26px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 30;
-  white-space: nowrap;
-  font-size: 9px;
-  font-weight: 600;
-  padding: 3px 7px;
-  border-radius: 7px;
-  color: #fff;
-  background: rgba(20, 20, 24, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  pointer-events: none;
-}
 
 @keyframes shimmerSlide {
   0% { background-position: -160% 0; }
