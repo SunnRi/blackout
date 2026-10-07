@@ -1077,21 +1077,46 @@ function App() {
                 {/* Graph — standard/extended only */}
                 {density !== 'minimal' && (
                   <div className="mb-4">
-                    <HourlyGraph
-                      key={dayTab}
-                      slots={displaySlots} now={now} isToday={dayTab === 'today'}
-                      updated={displaySchedule?.updated ?? null}
-                      showStats={isExtended}
-                    />
+                    {dayTab === 'tomorrow' && displaySlots.length === 0 ? (
+                      <div className="d-card flex flex-col items-center justify-center gap-2 py-8 text-center fade-in">
+                        <Clock className="h-7 w-7 text-muted-c" />
+                        <p className="max-w-xs px-4 text-sm text-secondary-c">Графік відключень ще не опубліковано. Очікуємо оновлення інформації</p>
+                      </div>
+                    ) : (
+                      <HourlyGraph
+                        key={dayTab}
+                        slots={displaySlots} now={now} isToday={dayTab === 'today'}
+                        updated={displaySchedule?.updated ?? null}
+                        showStats={isExtended}
+                      />
+                    )}
                   </div>
                 )}
 
                 {/* Lists */}
                 {density === 'minimal' && (
-                  <div className="mb-4"><CompactList slots={todaySlots} now={now} isToday={true} limit={3} /></div>
+                  <div className="mb-4">
+                    {dayTab === 'tomorrow' && tomorrowSlots.length === 0 ? (
+                      <div className="d-card flex flex-col items-center justify-center gap-2 py-8 text-center fade-in">
+                        <Clock className="h-7 w-7 text-muted-c" />
+                        <p className="max-w-xs px-4 text-sm text-secondary-c">Графік відключень ще не опубліковано. Очікуємо оновлення інформації</p>
+                      </div>
+                    ) : (
+                      <CompactList slots={dayTab === 'today' ? todaySlots : tomorrowSlots} now={now} isToday={dayTab === 'today'} limit={3} />
+                    )}
+                  </div>
                 )}
-                {density === 'standard' && (
-                  <div className="mb-4"><CompactList slots={displaySlots} now={now} isToday={dayTab === 'today'} /></div>
+                               {density === 'standard' && (
+                  <div className="mb-4">
+                    {dayTab === 'tomorrow' && displaySlots.length === 0 ? (
+                      <div className="d-card flex flex-col items-center justify-center gap-2 py-8 text-center fade-in">
+                        <Clock className="h-7 w-7 text-muted-c" />
+                        <p className="max-w-xs px-4 text-sm text-secondary-c">Графік відключень ще не опубліковано. Очікуємо оновлення інформації</p>
+                      </div>
+                    ) : (
+                      <CompactList slots={displaySlots} now={now} isToday={dayTab === 'today'} />
+                    )}
+                  </div>
                 )}
                 {density === 'extended' && (
                   <>
