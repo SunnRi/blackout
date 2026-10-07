@@ -470,35 +470,6 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
   );
 }
 
-// ── Pickers ───────────────────────────────────────────────────
-function OptionRow<T extends string>({ options, value, onChange }: {
-  options: { id: T; name: string; icon: typeof Eye }[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="segmented flex w-full">
-      {options.map((opt) => {
-        const Icon = opt.icon;
-        const selected = value === opt.id;
-        return (
-          <button
-            key={opt.id}
-            onClick={() => { onChange(opt.id); hapticImpact('light'); }}
-            title={opt.name}
-            className={`segmented-item flex flex-1 items-center justify-center gap-1.5 px-2 py-2 text-xs font-semibold ${
-              selected ? 'active accent-c' : 'text-secondary-c'
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{opt.name}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── Onboarding ────────────────────────────────────────────────
 function Onboarding({
   step, setStep, oblasts, selectedOblast, setSelectedOblast,
@@ -755,7 +726,7 @@ function App() {
   }, [selectedOblast]);
 
   useEffect(() => {
-    if (!tgUser || cities.length === 0) return;
+    if (!tgUser || !onboarded || cities.length === 0) return;
     supabase.from('user_preferences').select('*').eq('tg_user_id', tgUser.id).maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -773,7 +744,7 @@ function App() {
           if (prefs.queue_group) setSelectedGroup(prefs.queue_group);
         }
       });
-  }, [tgUser, oblasts, cities]);
+  }, [tgUser, onboarded, oblasts, cities]);
 
   useEffect(() => {
     if (!tgUser || !selectedOblast || !selectedCity || !selectedGroup) return;
@@ -921,6 +892,22 @@ function App() {
                 {themeMode === 'dark' && <Moon className="h-4 w-4 text-slate-400" />}
               </button>
               {view === 'schedule' && (
+                <button
+                  onClick={() => {
+                    const idx = DENSITY_OPTIONS.findIndex((o) => o.id === density);
+                    setDensity(DENSITY_OPTIONS[(idx + 1) % DENSITY_OPTIONS.length].id);
+                    hapticImpact('light');
+                  }}
+                  className="d-btn flex h-9 w-9 items-center justify-center rounded-full"
+                  aria-label="Стиль відображення"
+                  title={`Стиль: ${DENSITY_OPTIONS.find((o) => o.id === density)?.name}`}
+                >
+                  {density === 'minimal' && <Gauge className="h-4 w-4 accent-c" />}
+                  {density === 'standard' && <LayoutGrid className="h-4 w-4 accent-c" />}
+                  {density === 'extended' && <Layers className="h-4 w-4 accent-c" />}
+                </button>
+              )}
+              {view === 'schedule' && (
                 <button onClick={() => { setView('settings'); hapticImpact('light'); }}
                   className="d-btn flex h-9 w-9 items-center justify-center rounded-full">
                   <Settings className="h-4 w-4 accent-c" />
@@ -1042,17 +1029,6 @@ function App() {
                 <CheckCircle2 className="h-3.5 w-3.5" /> Збережено
               </div>
             )}
-
-            {/* Density */}
-            <div>
-              <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">
-                <Eye className="h-3.5 w-3.5 accent-c" /> Що показувати
-              </h3>
-              <OptionRow
-                options={DENSITY_OPTIONS.map(({ id, name, icon }) => ({ id, name, icon }))}
-                value={density} onChange={setDensity}
-              />
-            </div>
 
             {/* Theme */}
             <div>
@@ -1182,7 +1158,11 @@ function App() {
 
             {/* Replay onboarding */}
             <button
-              onClick={() => { setObStep(0); setOnboarded(false); localStorage.removeItem('onboarded'); }}
+              onClick={() => {
+                setObStep(0); setOnboarded(false); localStorage.removeItem('onboarded');
+                setSelectedOblast(null); setSelectedCity(null); setSelectedGroup('');
+                setTodaySchedule(null); setTomorrowSchedule(null);
+              }}
               className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-secondary-c transition-all hover:scale-[1.01]"
             >
               <Sparkles className="h-3.5 w-3.5" /> Пройти налаштування знову
