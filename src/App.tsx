@@ -351,14 +351,17 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
 
                 {showStats && isToday && (
           <div className="mt-3 border-t border-subtle-c pt-2.5">
-            <div className="flex items-center gap-2">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
-                <div
-                  className="day-progress h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500"
-                  style={{ width: `${(currentMin / 1440) * 100}%` }}
-                />
-              </div>
-              <span className="text-[10px] font-medium text-muted-c">{Math.round((currentMin / 1440) * 100)}% дня</span>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-muted-c">Прогрес дня</span>
+              <span className="text-[11px] font-semibold text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {minutesToTime(currentMin)} з 24:00
+              </span>
+            </div>
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
+              <div
+                className="day-progress h-full rounded-full"
+                style={{ width: `${(currentMin / 1440) * 100}%` }}
+              />
             </div>
           </div>
         )}
