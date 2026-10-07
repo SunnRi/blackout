@@ -566,7 +566,7 @@ function Onboarding({
             <div className="flex flex-1 flex-col fade-in-right">
               <h2 className="text-2xl font-extrabold text-primary-c">Ваша область</h2>
               <p className="mb-4 mt-1 text-sm text-secondary-c">Оберіть область або місто Київ</p>
-              <div className="d-panel max-h-80 flex-1 space-y-1 overflow-y-auto rounded-2xl p-2">
+              <div className="d-panel space-y-1 rounded-2xl p-2">
                 {oblasts.map((oblast) => (
                   <button
                     key={oblast.slug}
@@ -597,7 +597,7 @@ function Onboarding({
                   className="d-panel w-full rounded-xl py-3 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
-              <div className="d-panel max-h-80 flex-1 space-y-1 overflow-y-auto rounded-2xl p-2">
+              <div className="d-panel max-h-72 flex-1 space-y-1 overflow-y-auto rounded-2xl p-2">
                 {citiesLoading ? (
                   <div className="flex items-center justify-center py-8 text-secondary-c">
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Завантаження міст...
