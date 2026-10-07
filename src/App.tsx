@@ -10,6 +10,7 @@ import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supab
 import { getKyivTime, type KyivTime } from '@/lib/time';
 import {
   initTelegramWebApp, getTelegramUser, getTelegramWebApp, hapticImpact, hapticNotification,
+  setTelegramThemeColors,
 } from '@/lib/telegram';
 import {
   fetchOblasts, fetchCities, fetchTodaySchedule, fetchTomorrowSchedule,
@@ -990,6 +991,7 @@ function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
+    setTelegramThemeColors(resolvedTheme);
   }, [resolvedTheme]);
 
   useEffect(() => { localStorage.setItem('themeMode', themeMode); }, [themeMode]);
@@ -1223,7 +1225,7 @@ function App() {
   return (
     <div className="design-glass min-h-screen bg-primary-c" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <Aurora />
-      <div className="relative z-10 mx-auto max-w-lg px-4 py-4 sm:px-5">
+      <div className="relative z-10 mx-auto max-w-lg px-4 py-4 sm:px-5" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
 
         {/* ── Header ── */}
         <header className="mb-4 fade-in">

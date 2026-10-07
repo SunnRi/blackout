@@ -58,13 +58,20 @@ export function getTelegramWebApp() {
   return window.Telegram?.WebApp ?? null;
 }
 
+export function setTelegramThemeColors(mode: 'light' | 'dark') {
+  const tg = getTelegramWebApp();
+  if (!tg) return;
+  const color = mode === 'dark' ? '#000000' : '#eef1f6';
+  if (tg.setHeaderColor) tg.setHeaderColor(color);
+  if (tg.setBackgroundColor) tg.setBackgroundColor(color);
+}
+
 export function initTelegramWebApp() {
   const tg = getTelegramWebApp();
   if (tg) {
     tg.ready();
     tg.expand();
-    if (tg.setHeaderColor) tg.setHeaderColor('#0a0e1a');
-    if (tg.setBackgroundColor) tg.setBackgroundColor('#0a0e1a');
+    setTelegramThemeColors('dark');
   }
   return tg;
 }
