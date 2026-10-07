@@ -12,10 +12,15 @@ const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
-
 const MINI_APP_URL = Deno.env.get("MINI_APP_URL") ?? "https://bolt.new";
-
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+
+const BEZSVITLA_BASE = "https://bezsvitla.com.ua";
+const YASNO_BASE = "https://app.yasno.ua/api/blackout-service/public/shutdowns";
+const YASNO_REGION_ID = 25;
+const YASNO_DSO_ID = 902;
+
+type Slot = { start: number; end: number; type: string };
 
 type TGUser = {
   id: number;
@@ -45,14 +50,16 @@ type TGUpdate = {
   callback_query?: TGCallbackQuery;
 };
 
-async function sendMessage(chatId: number, text: string, keyboard?: unknown) {
-  const body: Record<string, unknown> = {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-  };
-  if (keyboard) body.reply_markup = keyboard;
-  const resp = await fetch(`${TELEGRAM_API}/sendMessage`, {
+type UserPref = {
+  oblast_slug: string | null;
+  city_slug: string | null;
+  queue_group: string | null;
+  notify_enabled: boolean;
+};
+
+// ── Telegram helpers ──────────────────────────────────────────
+async function tgCall(method: string, body: Record<string, unknown>) {
+  const resp = await fetch(`${TELEGRAM_API}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -60,47 +67,165 @@ async function sendMessage(chatId: number, text: string, keyboard?: unknown) {
   return resp.json();
 }
 
-async function setChatMenuButton() {
-  const resp = await fetch(`${TELEGRAM_API}/setChatMenuButton`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      menu_button: {
-        type: "web_app",
-        text: "Графік світла",
-        web_app: { url: MINI_APP_URL },
-      },
-    }),
+async function sendMessage(chatId: number, text: string, keyboard?: unknown) {
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+  };
+  if (keyboard) body.reply_markup = keyboard;
+  return tgCall("sendMessage", body);
+}
+
+async function answerCallback(id: string, text?: string) {
+  return tgCall("answerCallbackQuery", {
+    callback_query_id: id,
+    ...(text ? { text, show_alert: false } : {}),
   });
-  return resp.json();
+}
+
+function setChatMenuButton() {
+  return tgCall("setChatMenuButton", {
+    menu_button: {
+      type: "web_app",
+      text: "Графік світла",
+      web_app: { url: MINI_APP_URL },
+    },
+  });
 }
 
 const mainKeyboard = {
   inline_keyboard: [
+    [{ text: "⚡️ Відкрити графік", web_app: { url: MINI_APP_URL } }],
     [
-      {
-        text: "Відкрити графік відключень",
-        web_app: { url: MINI_APP_URL },
-      },
+      { text: "🟢 Мій статус", callback_data: "status" },
+      { text: "🕒 Коли світло", callback_data: "next" },
     ],
-    [
-      { text: "Мій статус", callback_data: "status" },
-      { text: "Допомога", callback_data: "help" },
-    ],
+    [{ text: "🔔 Налаштування сповіщень", web_app: { url: MINI_APP_URL } }],
   ],
 };
 
+// ── Time helpers (Kyiv) ───────────────────────────────────────
+function getKyivNow(): Date {
+  const now = new Date();
+  return new Date(now.toLocaleString("en-US", { timeZone: "Europe/Kyiv" }));
+}
+
+function minutesToTime(min: number): string {
+  const h = Math.floor(min / 60) % 24;
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function formatDuration(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h > 0 && m > 0) return `${h} год ${m} хв`;
+  if (h > 0) return `${h} год`;
+  return `${m} хв`;
+}
+
+// ── Schedule helpers ──────────────────────────────────────────
+function parseBezsvitla(html: string, targetQueue: string): Slot[] {
+  const queueMatches = [...html.matchAll(/Черга\s+(\d\.\d)/g)];
+  for (let i = 0; i < queueMatches.length; i++) {
+    if (queueMatches[i][1] !== targetQueue) continue;
+    const sectionStart = queueMatches[i].index! + queueMatches[i][0].length;
+    const sectionEnd = i + 1 < queueMatches.length
+      ? queueMatches[i + 1].index!
+      : sectionStart + 5000;
+    const section = html.slice(sectionStart, sectionEnd);
+    const slots: Slot[] = [];
+    for (const m of section.matchAll(
+      /bz-schedule-slot--(on|off)[^>]*>.*?(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/gs,
+    )) {
+      const [h, min] = m[2].split(":").map(Number);
+      const startMin = h * 60 + min;
+      let endMin: number;
+      if (m[3] === "24:00") endMin = 1440;
+      else {
+        const [eh, em] = m[3].split(":").map(Number);
+        endMin = eh * 60 + em;
+      }
+      slots.push({
+        start: startMin,
+        end: endMin,
+        type: m[1] === "off" ? "Definite" : "NotPlanned",
+      });
+    }
+    return slots;
+  }
+  return [];
+}
+
+async function fetchYasnoSlots(queue: string, tomorrow: boolean): Promise<Slot[]> {
+  const resp = await fetch(
+    `${YASNO_BASE}/regions/${YASNO_REGION_ID}/dsos/${YASNO_DSO_ID}/planned-outages`,
+    { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } },
+  );
+  if (!resp.ok) throw new Error(`Yasno API ${resp.status}`);
+  const planned = await resp.json();
+  const day = tomorrow ? "tomorrow" : "today";
+  const data = (planned as Record<string, unknown>)[queue] as Record<string, unknown> | undefined;
+  return (data?.[day] as { slots: Slot[] } | undefined)?.slots ?? [];
+}
+
+async function fetchTodaySlots(
+  oblastSlug: string,
+  citySlug: string,
+  queue: string,
+): Promise<Slot[]> {
+  if (citySlug === "kyiv") return fetchYasnoSlots(queue, false);
+  const resp = await fetch(
+    `${BEZSVITLA_BASE}/${oblastSlug || "kyivska-oblast"}/${citySlug}`,
+    { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
+  );
+  if (!resp.ok) throw new Error(`bezsvitla ${resp.status}`);
+  return parseBezsvitla(await resp.text(), queue);
+}
+
+async function fetchTomorrowSlots(
+  oblastSlug: string,
+  citySlug: string,
+  queue: string,
+): Promise<Slot[]> {
+  if (citySlug === "kyiv") return fetchYasnoSlots(queue, true);
+  const resp = await fetch(
+    `${BEZSVITLA_BASE}/${oblastSlug || "kyivska-oblast"}/${citySlug}/grafik-na-zavtra`,
+    { headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" } },
+  );
+  if (!resp.ok) throw new Error(`bezsvitla ${resp.status}`);
+  return parseBezsvitla(await resp.text(), queue);
+}
+
+async function getUserPref(tgUserId: number): Promise<UserPref | null> {
+  const { data } = await supabase
+    .from("user_preferences")
+    .select("oblast_slug, city_slug, queue_group, notify_enabled")
+    .eq("tg_user_id", tgUserId)
+    .maybeSingle();
+  return (data as UserPref) ?? null;
+}
+
+function prefConfigured(p: UserPref | null): p is UserPref & {
+  city_slug: string; queue_group: string;
+} {
+  return !!p && !!p.city_slug && !!p.queue_group;
+}
+
+// ── Messages ──────────────────────────────────────────────────
 async function handleStart(msg: TGMessage) {
   const chatId = msg.chat.id;
-  const user = msg.from;
-  const name = user?.first_name ?? "другу";
-
+  const name = msg.from?.first_name ?? "друг";
   await sendMessage(
     chatId,
-    `Привіт, ${name}! ⚡️\n\n` +
-      `Я бот для відстеження графіка відключень світла в Україні.\n\n` +
-      `Оберіть свою область та групу у веб-додатку, і ви завжди знатимете, коли буде світло, а коли — ні.\n\n` +
-      `Натисніть кнопку нижче, щоб відкрити графік:`,
+    `Привіт, <b>${name}</b>! ⚡️\n\n` +
+      `Я стежу за графіком відключень світла і скажу заздалегідь, коли його вимкнуть.\n\n` +
+      `🔔 <b>Що я вмію:</b>\n` +
+      `• Попереджаю про відключення заздалегідь\n` +
+      `• Повідомляю, якщо графік змінився\n` +
+      `• Показую статус і найближчі відключення\n\n` +
+      `Спочатку оберіть місто та чергу у веб-додатку 👇`,
     mainKeyboard,
   );
 }
@@ -108,98 +233,154 @@ async function handleStart(msg: TGMessage) {
 async function handleHelp(chatId: number) {
   await sendMessage(
     chatId,
-    `<b>Як користуватися ботом</b>\n\n` +
-      `1. Натисніть «Відкрити графік відключень» — відкриється веб-додаток\n` +
-      `2. Оберіть свою область та групу відключень\n` +
-      `3. Побачите актуальний статус: є світло чи ні\n` +
-      `4. Графік на весь тиждень з підсвічуванням поточного часу\n\n` +
-      `Команди:\n` +
+    `<b>📖 Як користуватися</b>\n\n` +
+      `1. Натисніть «Відкрити графік» і оберіть область, місто та чергу\n` +
+      `2. Увімкніть сповіщення в налаштуваннях додатка\n` +
+      `3. Я напишу заздалегідь, коли світло вимкнуть\n\n` +
+      `<b>Команди:</b>\n` +
       `/start — головне меню\n` +
-      `/status — швидкий перегляд статусу\n` +
-      `/help — ця довідка\n`,
+      `/status — чи є світло зараз\n` +
+      `/next — найближчі відключення\n` +
+      `/help — ця довідка`,
     mainKeyboard,
   );
 }
 
-async function handleStatus(callback: TGCallbackQuery) {
-  const chatId = callback.message?.chat.id;
-  const tgUser = callback.from;
-  if (!chatId) return;
-
-  const { data: prefs } = await supabase
-    .from("user_preferences")
-    .select("region_id, group_id")
-    .eq("tg_user_id", tgUser.id)
-    .maybeSingle();
-
-  if (!prefs || !prefs.region_id || !prefs.group_id) {
+async function handleStatus(chatId: number, tgUserId: number) {
+  const pref = await getUserPref(tgUserId);
+  if (!prefConfigured(pref)) {
     await sendMessage(
       chatId,
-      `Ви ще не обрали область та групу. Натисніть кнопку нижче, щоб налаштувати:`,
+      `⚙️ Спочатку оберіть місто та чергу у веб-додатку — і я покажу ваш статус.`,
       mainKeyboard,
     );
     return;
   }
 
-  const { data: region } = await supabase
-    .from("regions")
-    .select("name")
-    .eq("id", prefs.region_id)
-    .maybeSingle();
+  let slots: Slot[];
+  try {
+    slots = await fetchTodaySlots(pref.oblast_slug ?? "", pref.city_slug!, pref.queue_group!);
+  } catch {
+    await sendMessage(
+      chatId,
+      `😴 Не вдалося завантажити графік. Спробуйте трохи пізніше.`,
+      mainKeyboard,
+    );
+    return;
+  }
 
-  const { data: group } = await supabase
-    .from("outage_groups")
-    .select("label, group_number")
-    .eq("id", prefs.group_id)
-    .maybeSingle();
+  if (slots.length === 0) {
+    await sendMessage(
+      chatId,
+      `📭 <b>Графік відключень ще не опубліковано</b>\n\nЧекаємо оновлення інформації — як тільки з'явиться, повідомлю.`,
+      mainKeyboard,
+    );
+    return;
+  }
 
-  const { data: liveStatus } = await supabase
-    .from("live_outage_status")
-    .select("status, message")
-    .eq("region_id", prefs.region_id)
-    .maybeSingle();
+  const now = getKyivNow();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const current = slots.find((s) => cur >= s.start && cur < s.end);
+  const isOff = current?.type === "Definite";
 
-  const statusEmoji =
-    liveStatus?.status === "red" ? "🔴" : liveStatus?.status === "yellow" ? "🟡" : "🟢";
-  const statusText =
-    liveStatus?.status === "red"
-      ? "Відключення активні"
-      : liveStatus?.status === "yellow"
-        ? "Можливі відключення"
-        : "Система в нормі";
+  const nextOn = slots
+    .filter((s) => s.type !== "Definite" && s.start > cur)
+    .sort((a, b) => a.start - b.start)[0];
+  const nextOut = slots
+    .filter((s) => s.type === "Definite" && s.start > cur)
+    .sort((a, b) => a.start - b.start)[0];
+
+  let body: string;
+  if (isOff) {
+    const until = current ? formatDuration(current.end - cur) : "";
+    body = `🔴 <b>Світла немає</b>\n` +
+      `Вернеться о <b>${minutesToTime(current!.end)}</b> · через ${until}`;
+    if (nextOn) body += `\n\n🟢 Далі світло: <b>${minutesToTime(nextOn.start)}–${minutesToTime(nextOn.end)}</b>`;
+  } else {
+    body = `🟢 <b>Світло є</b>`;
+    if (current) body += `\nДо ${minutesToTime(current.end)} · ${formatDuration(current.end - cur)}`;
+    if (nextOut) {
+      const mins = nextOut.start - cur;
+      body += `\n\n🔴 Відключення о <b>${minutesToTime(nextOut.start)}</b> · через ${formatDuration(mins)}`;
+      body += `\nБез світла до ${minutesToTime(nextOut.end)}`;
+    } else {
+      body += `\n\n✅ Більше відключень сьогодні не заплановано`;
+    }
+  }
 
   await sendMessage(
     chatId,
-    `<b>Ваш статус</b>\n\n` +
-      `📍 Область: ${region?.name ?? "—"}\n` +
-      `🔢 Група: ${group?.label ?? "—"}\n\n` +
-      `${statusEmoji} Стан енергосистеми: ${statusText}\n` +
-      (liveStatus?.message ? `\n${liveStatus.message}\n` : "") +
-      `\nВідкрийте веб-додаток для детального графіка:`,
+    `${body}\n\n📍 ${pref.city_slug} · черга ${pref.queue_group}`,
     mainKeyboard,
   );
 }
 
-async function handleSavePreferences(chatId: number, tgUser: TGUser, data: string) {
-  // data format: "save:region_id:group_id"
-  const parts = data.split(":");
-  if (parts.length !== 3) return;
-  const [, regionId, groupId] = parts;
-
-  await supabase
-    .from("user_preferences")
-    .upsert(
-      {
-        tg_user_id: tgUser.id,
-        tg_username: tgUser.username ?? null,
-        region_id: regionId,
-        group_id: groupId,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "tg_user_id" },
+async function handleNext(chatId: number, tgUserId: number) {
+  const pref = await getUserPref(tgUserId);
+  if (!prefConfigured(pref)) {
+    await sendMessage(
+      chatId,
+      `⚙️ Спочатку оберіть місто та чергу у веб-додатку — і я покажу розклад.`,
+      mainKeyboard,
     );
+    return;
+  }
 
-  await sendMessage(chatId, "✅ Налаштування збережено! Тепер ви можете швидко перевіряти статус через /status.", mainKeyboard);
+  let todaySlots: Slot[] = [];
+  let tomorrowSlots: Slot[] = [];
+  try {
+    todaySlots = await fetchTodaySlots(pref.oblast_slug ?? "", pref.city_slug!, pref.queue_group!);
+    tomorrowSlots = await fetchTomorrowSlots(pref.oblast_slug ?? "", pref.city_slug!, pref.queue_group!);
+  } catch {
+    await sendMessage(chatId, `😴 Не вдалося завантажити графік. Спробуйте трохи пізніше.`, mainKeyboard);
+    return;
+  }
+
+  if (todaySlots.length === 0 && tomorrowSlots.length === 0) {
+    await sendMessage(
+      chatId,
+      `📭 <b>Графік відключень ще не опубліковано</b>\n\nЧекаємо оновлення інформації — як тільки з'явиться, повідомлю.`,
+      mainKeyboard,
+    );
+    return;
+  }
+
+  const now = getKyivNow();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const offToday = todaySlots
+    .filter((s) => s.type === "Definite" && s.end > cur)
+    .sort((a, b) => a.start - b.start);
+
+  let text = `🕒 <b>Найближчі відключення</b>\n📍 ${pref.city_slug} · черга ${pref.queue_group}\n`;
+
+  if (offToday.length > 0) {
+    text += `\n<b>Сьогодні:</b>\n`;
+    for (const s of offToday.slice(0, 4)) {
+      const active = cur >= s.start && cur < s.end;
+      text += `${active ? "🔴" : "▪️"} <b>${minutesToTime(s.start)}–${minutesToTime(s.end)}</b> · ${formatDuration(s.end - s.start)}${active ? " · зараз" : ""}\n`;
+    }
+  } else {
+    text += `\n✅ Сьогодні відключень більше немає\n`;
+  }
+
+  const offTomorrow = tomorrowSlots.filter((s) => s.type === "Definite");
+  if (offTomorrow.length > 0) {
+    text += `\n<b>Завтра:</b>\n`;
+    for (const s of offTomorrow.slice(0, 4)) {
+      text += `▫️ <b>${minutesToTime(s.start)}–${minutesToTime(s.end)}</b> · ${formatDuration(s.end - s.start)}\n`;
+    }
+  } else if (tomorrowSlots.length > 0) {
+    text += `\n🟢 Завтра відключень не заплановано\n`;
+  } else {
+    text += `\n📭 Графік на завтра ще не опубліковано\n`;
+  }
+
+  await sendMessage(chatId, text, mainKeyboard);
+}
+
+async function handleStatusCommand(msg: TGMessage) {
+  if (!msg.from) return;
+  await handleStatus(msg.chat.id, msg.from.id);
 }
 
 Deno.serve(async (req: Request) => {
@@ -208,20 +389,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // GET endpoint to set the webhook + menu button
     if (req.method === "GET") {
       const url = new URL(req.url);
       if (url.searchParams.get("setup") === "true") {
         const webhookUrl = `${url.origin}/functions/v1/telegram-bot`;
-        const wb = await fetch(`${TELEGRAM_API}/setWebhook`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: webhookUrl }),
-        });
+        const wb = await tgCall("setWebhook", { url: webhookUrl });
         const menu = await setChatMenuButton();
-        const wbData = await wb.json();
         return new Response(
-          JSON.stringify({ webhook: wbData, menu_button: menu }),
+          JSON.stringify({ webhook: wb, menu_button: menu }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
@@ -233,58 +408,38 @@ Deno.serve(async (req: Request) => {
 
     const update: TGUpdate = await req.json();
 
-    // Handle /start command
-    if (update.message?.text === "/start" || update.message?.text === "/help") {
-      if (update.message.text === "/start") {
-        await handleStart(update.message);
+    if (update.message?.text?.startsWith("/")) {
+      const chatId = update.message.chat.id;
+      const cmd = update.message.text.split("@")[0];
+      if (cmd === "/start") await handleStart(update.message);
+      else if (cmd === "/help") await handleHelp(chatId);
+      else if (cmd === "/status") await handleStatusCommand(update.message);
+      else if (cmd === "/next") {
+        if (update.message.from) await handleNext(chatId, update.message.from.id);
       } else {
-        await handleHelp(update.message.chat.id);
+        await sendMessage(chatId, `Не знаю таку команду 🤔 Спробуйте /help`, mainKeyboard);
       }
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Handle /status command
-    if (update.message?.text === "/status") {
-      const fakeCallback: TGCallbackQuery = {
-        id: "0",
-        from: update.message.from!,
-        message: { chat: update.message.chat, message_id: update.message.message_id },
-      };
-      await handleStatus(fakeCallback);
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Handle callback queries
     if (update.callback_query) {
       const cb = update.callback_query;
-      // Answer the callback to remove loading state
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ callback_query_id: cb.id }),
-      });
-
-      if (cb.data === "status") {
-        await handleStatus(cb);
-      } else if (cb.data === "help") {
-        await handleHelp(cb.message?.chat.id ?? 0);
-      } else if (cb.data?.startsWith("save:")) {
-        await handleSavePreferences(cb.message?.chat.id ?? 0, cb.from, cb.data);
-      }
+      await answerCallback(cb.id);
+      const chatId = cb.message?.chat.id ?? 0;
+      if (cb.data === "status") await handleStatus(chatId, cb.from.id);
+      else if (cb.data === "next") await handleNext(chatId, cb.from.id);
+      else if (cb.data === "help") await handleHelp(chatId);
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Fallback for any other message
     if (update.message) {
       await sendMessage(
         update.message.chat.id,
-        "Натисніть кнопку нижче, щоб відкрити графік відключень ⚡️",
+        `Натисніть кнопку нижче, щоб відкрити графік відключень ⚡️`,
         mainKeyboard,
       );
     }
@@ -295,7 +450,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     console.error("Bot error:", err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Internal error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

@@ -16,7 +16,11 @@ const YASNO_BASE = "https://app.yasno.ua/api/blackout-service/public/shutdowns";
 const YASNO_REGION_ID = 25;
 const YASNO_DSO_ID = 902;
 
+const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
+const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+
 const RETENTION_DAYS = 14;
+const MINI_APP_URL = Deno.env.get("MINI_APP_URL") ?? "https://bolt.new";
 
 type Slot = { start: number; end: number; type: string };
 type QueueSchedule = { queue: string; slots: Slot[] };
@@ -134,6 +138,15 @@ async function checkCity(
     .eq("oblast_slug", oblastSlug)
     .eq("city_slug", citySlug);
 
+  // Users following this city — they get change notifications
+  const { data: followerRows } = await supabase
+    .from("user_preferences")
+    .select("tg_user_id, queue_group, notify_enabled")
+    .eq("oblast_slug", oblastSlug)
+    .eq("city_slug", citySlug)
+    .not("queue_group", "is", null);
+  const followers = (followerRows ?? []) as { tg_user_id: number; queue_group: string; notify_enabled: boolean }[];
+
   type Snap = { queue: string; day: string; fingerprint: string };
   const prev = new Map<string, Snap>();
   for (const r of (prevRows ?? []) as Snap[]) {
@@ -144,6 +157,7 @@ async function checkCity(
     oblast_slug: string; city_slug: string; queue: string; day: string;
     change_type: string; summary: string;
   }[] = [];
+  const userNotifs: { tg_user_id: number; day: string; queue: string; summary: string }[] = [];
   const upserts: {
     oblast_slug: string; city_slug: string; queue: string; day: string; fingerprint: string;
   }[] = [];
@@ -166,11 +180,17 @@ async function checkCity(
           const [start, end] = range.split("-").map(Number);
           return { start, end, type };
         });
+        const summary = describeDiff(prevSlots, sched.slots);
         changes.push({
           oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, day,
           change_type: "changed",
-          summary: describeDiff(prevSlots, sched.slots),
+          summary,
         });
+        for (const f of followers) {
+          if (f.queue_group === sched.queue && f.notify_enabled) {
+            userNotifs.push({ tg_user_id: f.tg_user_id, day, queue: sched.queue, summary });
+          }
+        }
       }
       upserts.push({ oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, day, fingerprint: fp });
     }
@@ -199,6 +219,36 @@ async function checkCity(
       .from("schedule_change_log")
       .insert(changes);
     if (error) throw new Error(`change log insert: ${error.message}`);
+
+    // Push change notifications to affected followers
+    if (BOT_TOKEN && userNotifs.length > 0) {
+      const dayLabel = (d: string) => d === "today" ? "сьогодні" : "завтра";
+      for (const n of userNotifs) {
+        const text =
+          `🔄 <b>Графік змінився</b>\n\n` +
+          `Черга <b>${n.queue}</b> · ${dayLabel(n.day)}\n` +
+          `${n.summary}\n\n` +
+          `Відкрийте додаток, щоб побачити новий графік 👇`;
+        try {
+          await fetch(`${TELEGRAM_API}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: n.tg_user_id,
+              text,
+              parse_mode: "HTML",
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: "⚡️ Відкрити графік", web_app: { url: MINI_APP_URL } },
+                ]],
+              },
+            }),
+          });
+        } catch (sendErr) {
+          console.error(`notify user ${n.tg_user_id} failed:`, sendErr);
+        }
+      }
+    }
   }
   return changes.length;
 }
@@ -257,7 +307,7 @@ Deno.serve(async (req: Request) => {
           );
           if (tomorrowResp.ok) tomorrow = parseBezsvitla(await tomorrowResp.text());
         }
-        const n = await checkCity(city.oblast_slug, city.city_slug, today, tomorrow);
+    const n = await checkCity(city.oblast_slug, city.city_slug, today, tomorrow);
         totalChanges += n;
         checked.push({ city: city.city_slug, changes: n });
       } catch (cityErr) {
