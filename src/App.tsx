@@ -1014,7 +1014,7 @@ function App() {
                 )}
 
                 <footer className="mt-6 border-t border-subtle-c pt-3 text-center">
-                  <p className="text-xs text-muted-c">bezsvitla.com.ua · Київський час</p>
+                  <p className="text-xs text-muted-c">Дані з офіційних та неофіційних джерел · Київський час</p>
                 </footer>
               </>
             )}

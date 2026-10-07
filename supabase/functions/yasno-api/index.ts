@@ -141,7 +141,7 @@ async function fetchBezsvitlaCities(oblastSlug: string): Promise<{ slug: string;
     if (seen.has(slug) || slug.startsWith("grafik")) continue;
     seen.add(slug);
     const name = m[2].replace(/<[^>]+>/g, "").trim();
-    if (name && name.length > 1) cities.push({ slug, name });
+    if (name && name.length > 1 && !/(графік|черга)/i.test(name)) cities.push({ slug, name });
   }
   return cities;
 }

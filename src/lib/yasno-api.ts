@@ -74,7 +74,8 @@ export async function fetchOblasts(): Promise<Oblast[]> {
 export async function fetchCities(oblastSlug: string): Promise<City[]> {
   try {
     const data = await apiFetch('cities', { oblast: oblastSlug });
-    return Array.isArray(data) ? (data as City[]) : [];
+    if (!Array.isArray(data)) return [];
+    return (data as City[]).filter((c) => c.name && !/(графік|черга)/i.test(c.name));
   } catch {
     return [];
   }
