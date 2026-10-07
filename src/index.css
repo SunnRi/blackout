@@ -448,6 +448,34 @@
 .pulse-green { animation: pulse-glow-green 2.5s ease-in-out infinite; }
 .pulse-amber { animation: pulse-glow-amber 2.5s ease-in-out infinite; }
 
+/* Status plaque: soft colored tint + breathing glow */
+@keyframes statusGlowOn {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(52,199,89,0.22), 0 6px 24px rgba(52,199,89,0.12); }
+  50%      { box-shadow: 0 0 0 1px rgba(52,199,89,0.40), 0 8px 36px rgba(52,199,89,0.25); }
+}
+@keyframes statusGlowOff {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255,69,58,0.22), 0 6px 24px rgba(255,69,58,0.12); }
+  50%      { box-shadow: 0 0 0 1px rgba(255,69,58,0.40), 0 8px 36px rgba(255,69,58,0.25); }
+}
+.status-on {
+  background: linear-gradient(135deg, rgba(52,199,89,0.13) 0%, rgba(52,199,89,0.04) 55%, rgba(16,185,129,0.10) 100%);
+  border: 1px solid rgba(52,199,89,0.28);
+  animation: statusGlowOn 3.2s ease-in-out infinite;
+}
+.status-off {
+  background: linear-gradient(135deg, rgba(255,69,58,0.13) 0%, rgba(255,69,58,0.04) 55%, rgba(255,45,85,0.10) 100%);
+  border: 1px solid rgba(255,69,58,0.28);
+  animation: statusGlowOff 2.4s ease-in-out infinite;
+}
+.dark .status-on {
+  background: linear-gradient(135deg, rgba(52,199,89,0.20) 0%, rgba(52,199,89,0.06) 55%, rgba(16,185,129,0.14) 100%);
+  border-color: rgba(52,199,89,0.35);
+}
+.dark .status-off {
+  background: linear-gradient(135deg, rgba(255,69,58,0.20) 0%, rgba(255,69,58,0.06) 55%, rgba(255,45,85,0.14) 100%);
+  border-color: rgba(255,69,58,0.35);
+}
+
 .now-marker { animation: markerPulse 2s ease-in-out infinite; }
 .neon-pulse { animation: neonPulse 2s ease-in-out infinite; }
 

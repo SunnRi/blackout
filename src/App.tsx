@@ -3,7 +3,7 @@ import {
   Zap, ZapOff, MapPin, Loader2, CheckCircle2,
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, Clock, Info, X,
-  Sparkles, ArrowRight, ArrowLeft, ArrowDown, Check, RefreshCw, Keyboard,
+  Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
   LayoutGrid, Gauge, Layers, Eye, History,
 } from 'lucide-react';
 import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
@@ -158,9 +158,9 @@ function StatusCompact({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const nextOn = getNextOnSlot(slots, now);
 
   return (
-    <div className={`glass-sheen fade-in-scale hover-lift d-card p-4 ${isOff ? 'pulse-red' : 'pulse-green'}`}>
+    <div className={`glass-sheen fade-in-scale hover-lift d-card p-4 relative overflow-hidden ${isOff ? 'status-off' : 'status-on'}`}>
       <div className="flex items-center gap-3">
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${isOff ? 'bg-red-500/12' : 'bg-emerald-500/12'}`}>
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${isOff ? 'bg-red-500/15' : 'bg-emerald-500/15'}`}>
           {isOff
             ? <ZapOff className="flicker h-5 w-5" style={{ color: 'var(--on-negative)' }} />
             : <Zap className="neon-pulse h-5 w-5" style={{ color: 'var(--on-positive)' }} />}
@@ -206,8 +206,8 @@ function StatusFull({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const outagesCount = slots.filter((s) => s.type === 'Definite').length;
 
   return (
-    <div className={`glass-sheen fade-in-scale hover-lift d-card p-5 text-center ${isOff ? 'pulse-red' : 'pulse-green'}`}>
-      <div className={`mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full ${isOff ? 'bg-red-500/12' : 'bg-emerald-500/12'}`}>
+    <div className={`fade-in-scale hover-lift d-card p-5 text-center relative overflow-hidden ${isOff ? 'status-off' : 'status-on'}`}>
+      <div className={`mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full ${isOff ? 'bg-red-500/15' : 'bg-emerald-500/15'}`}>
         {isOff
           ? <ZapOff className="flicker h-8 w-8" style={{ color: 'var(--on-negative)' }} />
           : <Zap className="neon-pulse h-8 w-8" style={{ color: 'var(--on-positive)' }} />}
@@ -243,15 +243,15 @@ function StatusFull({ slots, now }: { slots: Slot[]; now: KyivTime }) {
         )}
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2">
-        <div className="rounded-xl bg-black/4 py-2 dark:bg-white/6">
+        <div className={`rounded-xl py-2 ${isOff ? 'bg-red-500/8' : 'bg-emerald-500/8'}`}>
           <p className="text-sm font-bold text-primary-c">{(offMins / 60).toFixed(1)}г</p>
           <p className="text-[9px] text-muted-c">без світла</p>
         </div>
-        <div className="rounded-xl bg-black/4 py-2 dark:bg-white/6">
+        <div className={`rounded-xl py-2 ${isOff ? 'bg-red-500/8' : 'bg-emerald-500/8'}`}>
           <p className="text-sm font-bold text-primary-c">{((1440 - offMins) / 60).toFixed(1)}г</p>
           <p className="text-[9px] text-muted-c">зі світлом</p>
         </div>
-        <div className="rounded-xl bg-black/4 py-2 dark:bg-white/6">
+        <div className={`rounded-xl py-2 ${isOff ? 'bg-red-500/8' : 'bg-emerald-500/8'}`}>
           <p className="text-sm font-bold text-primary-c">{outagesCount}</p>
           <p className="text-[9px] text-muted-c">відключень</p>
         </div>
@@ -743,49 +743,57 @@ function formatDayLabel(day: string): string {
 
 const isOffSlot = (s: DiffSlot) => s.type === 'Definite' || s.type === 'off';
 
-// One before/after day row: two horizontal 24h bars (was → now) with the
-// outage segments painted on, plus tick labels at the boundaries.
+function offRanges(slots: DiffSlot[]): string {
+  const off = slots.filter(isOffSlot).sort((a, b) => a.start - b.start);
+  if (off.length === 0) return 'немає';
+  return off
+    .map((s) => `${formatMinutes(s.start)} - ${formatMinutes(s.end === 1440 ? 1439 : s.end)}`)
+    .join(', ');
+}
+
+// Compact per-queue diff: the outage ranges before and after, shown as
+// "10:00 - 12:00 -> 10:00 - 14:00" lines. Cancelled outages drop away, new
+// ones appear with a +.
 function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: DiffSlot[] }) {
-  const Bar = ({ slots, label }: { slots: DiffSlot[]; label: string }) => {
-    const off = slots.filter(isOffSlot);
-    const marks = [...off.map((s) => s.start), ...off.map((s) => s.end)]
-      .filter((v, i, a) => a.indexOf(v) === i)
-      .sort((a, b) => a - b);
-    return (
-      <div>
-        <div className="mb-0.5 text-[10px] font-semibold text-muted-c">{label}</div>
-        <div className="relative h-4 w-full overflow-hidden rounded-md bg-emerald-500/25">
-          {off.map((s, i) => (
-            <div
-              key={i}
-              className="absolute top-0 h-full bg-rose-500"
-              style={{ left: `${(s.start / 1440) * 100}%`, width: `${Math.max(((s.end - s.start) / 1440) * 100, 1)}%` }}
-            />
-          ))}
-        </div>
-        <div className="relative mt-0.5 h-3">
-          {marks.map((m, i) => (
-            <span
-              key={i}
-              className="absolute -translate-x-1/2 text-[9px] leading-none text-muted-c tabular-nums"
-              style={{ left: `${(m / 1440) * 100}%` }}
-            >{formatMinutes(m)}</span>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  const keyOf = (s: DiffSlot) => `${s.start}-${s.end}`;
+  const oldOff = oldSlots.filter(isOffSlot);
+  const newOff = newSlots.filter(isOffSlot);
+  const oldKeys = new Set(oldOff.map(keyOf));
+  const newKeys = new Set(newOff.map(keyOf));
+
+  const kept = newOff.filter((s) => oldKeys.has(keyOf(s)));
+  const added = newOff.filter((s) => !oldKeys.has(keyOf(s)));
+  const removed = oldOff.filter((s) => !newKeys.has(keyOf(s)));
+
+  const fmtRange = (s: DiffSlot) => `${formatMinutes(s.start)} - ${formatMinutes(s.end === 1440 ? 1439 : s.end)}`;
+
+  const lines: { text: string; added: boolean; removed: boolean }[] = [];
+  for (const s of kept) lines.push({ text: fmtRange(s), added: false, removed: false });
+  for (const s of added) lines.push({ text: fmtRange(s), added: true, removed: false });
+  for (const s of removed) lines.push({ text: fmtRange(s), added: false, removed: true });
+
   return (
-    <div className="mt-2 space-y-2 rounded-xl bg-black/4 p-2.5 dark:bg-white/6">
-      <Bar slots={oldSlots} label="Було" />
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-c">
-        <ArrowDown className="h-3 w-3" /> Стало
-      </div>
-      <Bar slots={newSlots} label="" />
-      <div className="flex items-center gap-3 pt-0.5 text-[10px] text-muted-c">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-rose-500" /> без світла</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-500/60" /> світло є</span>
-      </div>
+    <div className="mt-2 space-y-1">
+      {lines.map((l, i) => (
+        <div key={i} className="flex items-center gap-1.5 font-mono text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {l.added ? (
+            <>
+              <span className="font-sans font-bold" style={{ color: 'var(--on-negative)' }}>+ відключення</span>
+              <span className="text-primary-c">{l.text}</span>
+            </>
+          ) : l.removed ? (
+            <>
+              <span className="font-sans font-bold" style={{ color: 'var(--on-positive)' }}>− відключення</span>
+              <span className="text-muted-c line-through">{l.text}</span>
+            </>
+          ) : (
+            <span className="text-secondary-c">{l.text}</span>
+          )}
+        </div>
+      ))}
+      {lines.length === 0 && (
+        <p className="text-xs" style={{ color: 'var(--on-positive)' }}>Відключень не заплановано</p>
+      )}
     </div>
   );
 }
@@ -884,6 +892,15 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
                   <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
                 ) : (
                   <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
+                )}
+                {it.oldSlots && it.newSlots && it.oldSlots.length > 0 && it.newSlots.length > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1 font-mono text-[11px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <span className="text-muted-c">Було:</span>
+                    <span className="text-secondary-c">{offRanges(it.oldSlots)}</span>
+                    <span className="text-muted-c">→</span>
+                    <span className="text-primary-c font-semibold">Стало:</span>
+                    <span className="text-primary-c">{offRanges(it.newSlots)}</span>
+                  </div>
                 )}
               </div>
             ))}
