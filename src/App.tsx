@@ -860,7 +860,7 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
           <span className="flex h-4 w-4 items-center justify-center rounded-full" style={{ background: 'color-mix(in srgb, var(--on-positive) 16%, transparent)' }}>
             <ArrowDown className="h-3 w-3 rotate-180" style={{ color: 'var(--on-positive)' }} />
           </span>
-          Відключення {removed.map(fmtRange).join(', ')} скасовано — світла не буде
+          Відключення {removed.map(fmtRange).join(', ')} скасовано — світло буде
         </p>
       )}
       {added.length > 0 && (
