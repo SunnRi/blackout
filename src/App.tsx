@@ -3,7 +3,7 @@ import {
   Zap, ZapOff, MapPin, Loader2, CheckCircle2,
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, AlertTriangle, Clock, Info, X,
-  Sparkles, ArrowRight, ArrowLeft, Check,
+  Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
   LayoutGrid, Gauge, Layers, Eye,
 } from 'lucide-react';
 import { supabase, type UserPreferences } from '@/lib/supabase';
@@ -570,7 +570,7 @@ function Onboarding({
                 {oblasts.map((oblast) => (
                   <button
                     key={oblast.slug}
-                    onClick={() => { setSelectedOblast(oblast); hapticImpact('light'); }}
+                    onClick={() => { setSelectedOblast(oblast); hapticImpact('light'); setStep(Math.max(step, 2)); }}
                     className={`flex w-full shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
                       selectedOblast?.slug === oblast.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c active:bg-black/5 dark:active:bg-white/5'
                     }`}
@@ -596,6 +596,12 @@ function Onboarding({
                   placeholder="Пошук міста..."
                   className="d-panel w-full rounded-xl py-2.5 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
+              </div>
+              <div className="mb-3 flex items-start gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(10,132,255,0.08)' }}>
+                <Keyboard className="mt-0.5 h-4 w-4 shrink-0 accent-c" />
+                <p className="text-xs leading-relaxed text-secondary-c">
+                  <b className="text-primary-c">Почніть вводити назву міста</b> — список відфільтрується автоматично. Київ також шукайте тут.
+                </p>
               </div>
               <div className="d-panel scroll-touch space-y-0.5 overflow-y-auto overscroll-contain rounded-2xl p-1.5" style={{ height: 'min(320px, 42vh)', WebkitOverflowScrolling: 'touch' }}>
                 {citiesLoading ? (
@@ -704,6 +710,7 @@ function App() {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [showEmergency, setShowEmergency] = useState(true);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [citySearchSettings, setCitySearchSettings] = useState('');
 
   const [notifyEnabled, setNotifyEnabled] = useState(true);
@@ -712,6 +719,7 @@ function App() {
 
   const tgUser = useMemo(() => getTelegramUser(), []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedCityKeyRef = useRef<string>('');
 
   useEffect(() => { initTelegramWebApp(); }, []);
 
@@ -786,7 +794,11 @@ function App() {
 
   useEffect(() => {
     if (!selectedOblast || !selectedCity) return;
-    setScheduleLoading(true); setApiError(null);
+    const key = `${selectedOblast.slug}/${selectedCity.slug}`;
+    const isFirstLoad = loadedCityKeyRef.current !== key;
+    loadedCityKeyRef.current = key;
+    if (isFirstLoad) setScheduleLoading(true);
+    setApiError(null);
     Promise.all([
       fetchTodaySchedule(selectedOblast.slug, selectedCity.slug),
       fetchTomorrowSchedule(selectedOblast.slug, selectedCity.slug),
@@ -796,9 +808,15 @@ function App() {
         const groups = today.schedules.map((s) => s.queue).sort();
         setAvailableGroups(groups.length > 0 ? groups : ALL_GROUPS);
       })
-      .catch(() => { setApiError('Не вдалося завантажити графік. Спробуйте пізніше.'); })
-      .finally(() => setScheduleLoading(false));
-  }, [selectedOblast, selectedCity]);
+      .catch(() => { if (isFirstLoad) setApiError('Не вдалося завантажити графік. Спробуйте пізніше.'); })
+      .finally(() => { if (isFirstLoad) setScheduleLoading(false); });
+  }, [selectedOblast, selectedCity, refreshTick]);
+
+  // Auto-refresh schedules every 30 minutes (silent, without loader)
+  useEffect(() => {
+    const interval = setInterval(() => setRefreshTick((t) => t + 1), 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(getKyivTime()), 15000);
@@ -950,6 +968,12 @@ function App() {
             ) : (
               <>
                 {showEmergency && <div className="mb-3"><EmergencyBanner onDismiss={() => { setShowEmergency(false); hapticImpact('light'); }} /></div>}
+
+                {/* Auto-refresh info */}
+                <div className="mb-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-c">
+                  <RefreshCw className="h-3 w-3" />
+                  <span>Графіки оновлюються автоматично кожні 30 хв</span>
+                </div>
 
                 {/* Status by density */}
                 {density === 'minimal' && <div className="mb-3"><StatusLine slots={todaySlots} now={now} /></div>}
