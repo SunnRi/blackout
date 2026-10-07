@@ -55,6 +55,7 @@ type UserPref = {
   city_slug: string | null;
   queue_group: string | null;
   notify_enabled: boolean;
+  notify_minutes_before: number;
 };
 
 // ── Telegram helpers ──────────────────────────────────────────
@@ -75,6 +76,16 @@ async function sendMessage(chatId: number, text: string, keyboard?: unknown) {
   };
   if (keyboard) body.reply_markup = keyboard;
   return tgCall("sendMessage", body);
+}
+
+async function editMessage(chatId: number, messageId: number, text: string, keyboard?: unknown) {
+  return tgCall("editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: "HTML",
+    ...(keyboard ? { reply_markup: keyboard } : {}),
+  });
 }
 
 async function answerCallback(id: string, text?: string) {
@@ -101,9 +112,25 @@ const mainKeyboard = {
       { text: "🟢 Мій статус", callback_data: "status" },
       { text: "🕒 Коли світло", callback_data: "next" },
     ],
-    [{ text: "🔔 Налаштування сповіщень", web_app: { url: MINI_APP_URL } }],
+    [{ text: "🔔 Сповіщення", callback_data: "settings" }],
   ],
 };
+
+function settingsKeyboard(notifyEnabled: boolean, minutes: number) {
+  return {
+    inline_keyboard: [
+      [{
+        text: notifyEnabled ? "🔔 Сповіщення: УВІМКНЕНІ" : "🔕 Сповіщення: вимкнені",
+        callback_data: "toggle_notify",
+      }],
+      [
+        { text: `${minutes === 30 ? "✅ " : ""}За 30 хв`, callback_data: "notify:30" },
+        { text: `${minutes === 60 ? "✅ " : ""}За 60 хв`, callback_data: "notify:60" },
+      ],
+      [{ text: "« Назад", callback_data: "back" }],
+    ],
+  };
+}
 
 // ── Time helpers (Kyiv) ───────────────────────────────────────
 function getKyivNow(): Date {
@@ -198,10 +225,11 @@ async function fetchTomorrowSlots(
   return parseBezsvitla(await resp.text(), queue);
 }
 
+// ── User preferences (shared with the mini app) ───────────────
 async function getUserPref(tgUserId: number): Promise<UserPref | null> {
   const { data } = await supabase
     .from("user_preferences")
-    .select("oblast_slug, city_slug, queue_group, notify_enabled")
+    .select("oblast_slug, city_slug, queue_group, notify_enabled, notify_minutes_before")
     .eq("tg_user_id", tgUserId)
     .maybeSingle();
   return (data as UserPref) ?? null;
@@ -213,6 +241,29 @@ function prefConfigured(p: UserPref | null): p is UserPref & {
   return !!p && !!p.city_slug && !!p.queue_group;
 }
 
+async function updateNotifySettings(
+  tgUserId: number,
+  patch: { notify_enabled?: boolean; notify_minutes_before?: number },
+) {
+  // Keep tg_username unchanged by not touching it; upsert only the patch.
+  const { data: existing } = await supabase
+    .from("user_preferences")
+    .select("tg_username")
+    .eq("tg_user_id", tgUserId)
+    .maybeSingle();
+  await supabase
+    .from("user_preferences")
+    .upsert(
+      {
+        tg_user_id: tgUserId,
+        tg_username: (existing as { tg_username: string | null } | null)?.tg_username ?? null,
+        ...patch,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "tg_user_id" },
+    );
+}
+
 // ── Messages ──────────────────────────────────────────────────
 async function handleStart(msg: TGMessage) {
   const chatId = msg.chat.id;
@@ -222,10 +273,10 @@ async function handleStart(msg: TGMessage) {
     `Привіт, <b>${name}</b>! ⚡️\n\n` +
       `Я стежу за графіком відключень світла і скажу заздалегідь, коли його вимкнуть.\n\n` +
       `🔔 <b>Що я вмію:</b>\n` +
-      `• Попереджаю про відключення заздалегідь\n` +
+      `• Попереджаю про відключення за 30 або 60 хвилин\n` +
       `• Повідомляю, якщо графік змінився\n` +
       `• Показую статус і найближчі відключення\n\n` +
-      `Спочатку оберіть місто та чергу у веб-додатку 👇`,
+      `Оберіть місто та чергу у веб-додатку, потім налаштуйте сповіщення тут 👇`,
     mainKeyboard,
   );
 }
@@ -235,8 +286,9 @@ async function handleHelp(chatId: number) {
     chatId,
     `<b>📖 Як користуватися</b>\n\n` +
       `1. Натисніть «Відкрити графік» і оберіть область, місто та чергу\n` +
-      `2. Увімкніть сповіщення в налаштуваннях додатка\n` +
-      `3. Я напишу заздалегідь, коли світло вимкнуть\n\n` +
+      `2. Натисніть «Сповіщення»: увімкніть їх і оберіть, за скільки хвилин попереджати (30 або 60)\n` +
+      `3. Я напишу заздалегідь, коли світло вимкнуть, і повідомлю, якщо графік зміниться\n\n` +
+      `Налаштування сповіщень спільні між ботом і веб-додатком — змініть у будь-якому місці.\n\n` +
       `<b>Команди:</b>\n` +
       `/start — головне меню\n` +
       `/status — чи є світло зараз\n` +
@@ -244,6 +296,23 @@ async function handleHelp(chatId: number) {
       `/help — ця довідка`,
     mainKeyboard,
   );
+}
+
+async function handleSettings(chatId: number, tgUserId: number, editOf?: number) {
+  const pref = await getUserPref(tgUserId);
+  const enabled = pref?.notify_enabled ?? false;
+  const minutes = pref?.notify_minutes_before ?? 60;
+  const text =
+    `<b>🔔 Налаштування сповіщень</b>\n\n` +
+    `Я напишу заздалегідь, коли світло вимкнуть, і повідомлю, якщо графік зміниться.\n\n` +
+    `Оберіть, за скільки хвилин попереджати про відключення.\n\n` +
+    `<i>Ці налаштування спільні з веб-додатком.</i>`;
+  const keyboard = settingsKeyboard(enabled, minutes);
+  if (editOf) {
+    await editMessage(chatId, editOf, text, keyboard);
+  } else {
+    await sendMessage(chatId, text, keyboard);
+  }
 }
 
 async function handleStatus(chatId: number, tgUserId: number) {
@@ -378,11 +447,6 @@ async function handleNext(chatId: number, tgUserId: number) {
   await sendMessage(chatId, text, mainKeyboard);
 }
 
-async function handleStatusCommand(msg: TGMessage) {
-  if (!msg.from) return;
-  await handleStatus(msg.chat.id, msg.from.id);
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -413,10 +477,10 @@ Deno.serve(async (req: Request) => {
       const cmd = update.message.text.split("@")[0];
       if (cmd === "/start") await handleStart(update.message);
       else if (cmd === "/help") await handleHelp(chatId);
-      else if (cmd === "/status") await handleStatusCommand(update.message);
-      else if (cmd === "/next") {
-        if (update.message.from) await handleNext(chatId, update.message.from.id);
-      } else {
+      else if (cmd === "/status" && update.message.from) await handleStatus(chatId, update.message.from.id);
+      else if (cmd === "/next" && update.message.from) await handleNext(chatId, update.message.from.id);
+      else if (cmd === "/settings" && update.message.from) await handleSettings(chatId, update.message.from.id);
+      else {
         await sendMessage(chatId, `Не знаю таку команду 🤔 Спробуйте /help`, mainKeyboard);
       }
       return new Response(JSON.stringify({ ok: true }), {
@@ -426,11 +490,37 @@ Deno.serve(async (req: Request) => {
 
     if (update.callback_query) {
       const cb = update.callback_query;
-      await answerCallback(cb.id);
       const chatId = cb.message?.chat.id ?? 0;
-      if (cb.data === "status") await handleStatus(chatId, cb.from.id);
-      else if (cb.data === "next") await handleNext(chatId, cb.from.id);
-      else if (cb.data === "help") await handleHelp(chatId);
+      const messageId = cb.message?.message_id;
+      const userId = cb.from.id;
+
+      if (cb.data === "toggle_notify") {
+        const pref = await getUserPref(userId);
+        const newValue = !(pref?.notify_enabled ?? false);
+        await updateNotifySettings(userId, { notify_enabled: newValue });
+        await answerCallback(cb.id, newValue ? "🔔 Сповіщення увімкнені" : "🔕 Сповіщення вимкнені");
+        if (messageId) await handleSettings(chatId, userId, messageId);
+      } else if (cb.data === "notify:30" || cb.data === "notify:60") {
+        const minutes = Number(cb.data.split(":")[1]);
+        await updateNotifySettings(userId, { notify_minutes_before: minutes, notify_enabled: true });
+        await answerCallback(cb.id, `⏰ Попереджатимемо за ${minutes} хв`);
+        if (messageId) await handleSettings(chatId, userId, messageId);
+      } else if (cb.data === "settings") {
+        await answerCallback(cb.id);
+        await handleSettings(chatId, userId);
+      } else if (cb.data === "back") {
+        await answerCallback(cb.id);
+        if (messageId) {
+          await editMessage(chatId, messageId, `Головне меню ⚡️`, mainKeyboard);
+        } else {
+          await sendMessage(chatId, `Головне меню ⚡️`, mainKeyboard);
+        }
+      } else {
+        await answerCallback(cb.id);
+        if (cb.data === "status") await handleStatus(chatId, userId);
+        else if (cb.data === "next") await handleNext(chatId, userId);
+        else if (cb.data === "help") await handleHelp(chatId);
+      }
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

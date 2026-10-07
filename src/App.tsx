@@ -793,6 +793,22 @@ function App() {
   useEffect(() => { localStorage.setItem('themeMode', themeMode); }, [themeMode]);
   useEffect(() => { localStorage.setItem('density', density); }, [density]);
 
+  // Notification settings are shared with the Telegram bot: refresh them
+  // whenever the user opens the settings screen so bot-side edits show up.
+  useEffect(() => {
+    if (view !== 'settings' || !tgUser) return;
+    supabase.from('user_preferences')
+      .select('notify_enabled, notify_minutes_before')
+      .eq('tg_user_id', tgUser.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        const prefs = data as Pick<UserPreferences, 'notify_enabled' | 'notify_minutes_before'>;
+        setNotifyEnabled(prefs.notify_enabled);
+        setNotifyMinutes(prefs.notify_minutes_before);
+      });
+  }, [view, tgUser]);
+
   useEffect(() => {
     fetchOblasts()
       .then((data) => { setOblasts(data); setLoading(false); })
@@ -1290,6 +1306,10 @@ function App() {
                     </div>
                   </div>
                 )}
+                <p className="mt-2.5 flex items-center gap-1 text-[10px] text-muted-c">
+                  <CheckCircle2 className="h-3 w-3 shrink-0" />
+                  Налаштування спільні з Telegram-ботом — змініть у будь-якому місці
+                </p>
               </div>
             )}
 
