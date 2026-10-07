@@ -1331,7 +1331,7 @@ function App() {
                   {densityMenuOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setDensityMenuOpen(false)} />
-                      <div className="absolute right-0 top-11 z-50 w-56 overflow-hidden rounded-xl d-panel shadow-xl fade-in-menu" style={{ zIndex: 50, isolation: 'isolate' }}>
+                      <div className="absolute right-0 top-11 z-50 w-56 overflow-hidden rounded-xl d-panel menu-solid fade-in-menu">
                         {DENSITY_OPTIONS.map((o) => (
                           <button
                             key={o.id}
