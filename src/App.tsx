@@ -1282,11 +1282,12 @@ function App() {
                   </div>
                   <button
                     onClick={() => { setNotifyEnabled(!notifyEnabled); hapticImpact('medium'); }}
-                    className={`relative h-5 w-9 rounded-full transition-colors ${notifyEnabled ? 'accent-bg' : 'bg-black/10 dark:bg-white/10'}`}
+                    className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${notifyEnabled ? 'accent-bg' : 'bg-black/10 dark:bg-white/10'}`}
+                    aria-label="Сповіщення"
                   >
                     <span
-                      className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200"
-                      style={{ transform: notifyEnabled ? 'translateX(16px)' : 'translateX(2px)' }}
+                      className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+                      style={{ transform: notifyEnabled ? 'translateX(16px)' : 'translateX(0px)' }}
                     />
                   </button>
                 </div>
