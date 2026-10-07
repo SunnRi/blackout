@@ -109,24 +109,27 @@ Deno.serve(async (req: Request) => {
           headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" },
         });
         const html = await resp.text();
-        // Extract city links
-        const cityPattern = /href="\/kyivska-oblast\/([a-z-]+)"/g;
         const cities: { slug: string; name: string }[] = [];
         const seen = new Set<string>();
-        const matches = [...html.matchAll(cityPattern)];
-        for (const m of matches) {
+        const cardPattern = /<a[^>]*href="\/kyivska-oblast\/([a-z-]+)"[^>]*class="bz-area-card[^"]*"[^>]*>(.*?)<\/a>/gs;
+        const cardMatches = [...html.matchAll(cardPattern)];
+        for (const m of cardMatches) {
           const slug = m[1];
-          if (slug === "grafik-na-zavtra") continue;
-          if (seen.has(slug)) continue;
+          if (slug === "grafik-na-zavtra" || seen.has(slug)) continue;
           seen.add(slug);
-          // Convert slug to readable name
-          const name = slug
-            .split("-")
-            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(" ");
-          cities.push({ slug, name });
+          const name = m[2].replace(/<[^>]+>/g, "").trim();
+          if (name) cities.push({ slug, name });
         }
-        // Add Kyiv city as a special entry
+        if (cities.length === 0) {
+          const fallbackPattern = /<a[^>]*href="\/kyivska-oblast\/([a-z-]+)"[^>]*>(.*?)<\/a>/gs;
+          for (const m of html.matchAll(fallbackPattern)) {
+            const slug = m[1];
+            if (slug === "grafik-na-zavtra" || seen.has(slug)) continue;
+            seen.add(slug);
+            const name = m[2].replace(/<[^>]+>/g, "").trim();
+            if (name) cities.push({ slug, name });
+          }
+        }
         cities.unshift({ slug: "kyiv", name: "Київ (місто)" });
         return jsonResponse(cities);
       }
