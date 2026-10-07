@@ -4,7 +4,7 @@ import {
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, Clock, Info, X,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
-  LayoutGrid, Gauge, Layers, Eye, History,
+  LayoutGrid, Gauge, Layers, Eye, History, Plus, Minus,
 } from 'lucide-react';
 import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -334,10 +334,10 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
         )}
       </div>
 
-      {updated && (
+      {updated && isToday && relUpdate && (
         <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-c">
           <Info className="h-3 w-3 shrink-0" />
-          <span>Графік оновлено · останні зміни: {updated}</span>
+          <span>Графік оновлено {relUpdate}</span>
         </p>
       )}
     </div>
@@ -744,17 +744,8 @@ function formatDayLabel(day: string): string {
 
 const isOffSlot = (s: DiffSlot) => s.type === 'Definite' || s.type === 'off';
 
-function offRanges(slots: DiffSlot[]): string {
-  const off = slots.filter(isOffSlot).sort((a, b) => a.start - b.start);
-  if (off.length === 0) return 'немає';
-  return off
-    .map((s) => `${formatMinutes(s.start)} - ${formatMinutes(s.end === 1440 ? 1439 : s.end)}`)
-    .join(', ');
-}
-
-// Compact per-queue diff: the outage ranges before and after, shown as
-// "10:00 - 12:00 -> 10:00 - 14:00" lines. Cancelled outages drop away, new
-// ones appear with a +.
+// Крупные "обводочные" плашки: что исчезло и что появилось. Каждое изменение —
+// отдельная карточка, понятная без чтения мелкого шрифта.
 function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: DiffSlot[] }) {
   const keyOf = (s: DiffSlot) => `${s.start}-${s.end}`;
   const oldOff = oldSlots.filter(isOffSlot);
@@ -762,38 +753,67 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
   const oldKeys = new Set(oldOff.map(keyOf));
   const newKeys = new Set(newOff.map(keyOf));
 
-  const kept = newOff.filter((s) => oldKeys.has(keyOf(s)));
   const added = newOff.filter((s) => !oldKeys.has(keyOf(s)));
   const removed = oldOff.filter((s) => !newKeys.has(keyOf(s)));
+  const allGone = newOff.length === 0;
 
-  const fmtRange = (s: DiffSlot) => `${formatMinutes(s.start)} - ${formatMinutes(s.end === 1440 ? 1439 : s.end)}`;
+  const fmtRange = (s: DiffSlot) => `${formatMinutes(s.start)} – ${formatMinutes(s.end === 1440 ? 1439 : s.end)}`;
 
-  const lines: { text: string; added: boolean; removed: boolean }[] = [];
-  for (const s of kept) lines.push({ text: fmtRange(s), added: false, removed: false });
-  for (const s of added) lines.push({ text: fmtRange(s), added: true, removed: false });
-  for (const s of removed) lines.push({ text: fmtRange(s), added: false, removed: true });
+  if (added.length === 0 && removed.length === 0) {
+    return (
+      <p className="mt-2 text-xs text-secondary-c">Відключення не змінилися</p>
+    );
+  }
 
   return (
-    <div className="mt-2 space-y-1">
-      {lines.map((l, i) => (
-        <div key={i} className="flex items-center gap-1.5 font-mono text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {l.added ? (
-            <>
-              <span className="font-sans font-bold" style={{ color: 'var(--on-negative)' }}>+ відключення</span>
-              <span className="text-primary-c">{l.text}</span>
-            </>
-          ) : l.removed ? (
-            <>
-              <span className="font-sans font-bold" style={{ color: 'var(--on-positive)' }}>− відключення</span>
-              <span className="text-muted-c line-through">{l.text}</span>
-            </>
-          ) : (
-            <span className="text-secondary-c">{l.text}</span>
-          )}
+    <div className="mt-2 space-y-1.5">
+      {removed.map((s, i) => (
+        <div
+          key={`r-${i}`}
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2"
+          style={{ background: 'color-mix(in srgb, var(--on-positive) 10%, transparent)' }}
+        >
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+            style={{ background: 'color-mix(in srgb, var(--on-positive) 18%, transparent)' }}
+          >
+            <Minus className="h-4 w-4" style={{ color: 'var(--on-positive)' }} />
+          </span>
+          <span className="text-sm leading-snug text-primary-c">
+            <b>Світло повернуть</b> о <b style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtRange(s)}</b> — відключення скасовано
+          </span>
         </div>
       ))}
-      {lines.length === 0 && (
-        <p className="text-xs" style={{ color: 'var(--on-positive)' }}>Відключень не заплановано</p>
+      {added.map((s, i) => (
+        <div
+          key={`a-${i}`}
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2"
+          style={{ background: 'color-mix(in srgb, var(--on-negative) 10%, transparent)' }}
+        >
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+            style={{ background: 'color-mix(in srgb, var(--on-negative) 18%, transparent)' }}
+          >
+            <Plus className="h-4 w-4" style={{ color: 'var(--on-negative)' }} />
+          </span>
+          <span className="text-sm leading-snug text-primary-c">
+            <b>Відключення</b> з <b style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtRange(s)}</b>
+          </span>
+        </div>
+      ))}
+      {allGone && (
+        <div
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2"
+          style={{ background: 'color-mix(in srgb, var(--on-positive) 10%, transparent)' }}
+        >
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+            style={{ background: 'color-mix(in srgb, var(--on-positive) 18%, transparent)' }}
+          >
+            <Minus className="h-4 w-4" style={{ color: 'var(--on-positive)' }} />
+          </span>
+          <span className="text-sm font-semibold leading-snug text-primary-c">Відключень не буде взагалі</span>
+        </div>
       )}
     </div>
   );
@@ -893,15 +913,6 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
                   <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
                 ) : (
                   <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
-                )}
-                {it.oldSlots && it.newSlots && it.oldSlots.length > 0 && it.newSlots.length > 0 && (
-                  <div className="mt-1 flex flex-wrap items-center gap-1 font-mono text-[11px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    <span className="text-muted-c">Було:</span>
-                    <span className="text-secondary-c">{offRanges(it.oldSlots)}</span>
-                    <span className="text-muted-c">→</span>
-                    <span className="text-primary-c font-semibold">Стало:</span>
-                    <span className="text-primary-c">{offRanges(it.newSlots)}</span>
-                  </div>
                 )}
               </div>
             ))}
