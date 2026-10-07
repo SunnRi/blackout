@@ -322,43 +322,41 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
       </div>
 
       <div className="d-card graph-aura p-3">
-        <div className="flex h-12 gap-[3px]" style={{ padding: '0 1px' }}>
-          {slots24.map(({ hour, status }) => {
-            const isPast = isToday && currentMin >= (hour + 1) * 60;
-
-            let barClass = 'tl-on';
-            if (status === 'off') barClass = 'tl-off';
-            else if (status === 'partial') barClass = 'tl-partial';
-
-            return (
-              <div key={hour} className="flex h-full flex-1">
-                <div
-                  className={`graph-bar-anim relative w-full rounded-[5px] ${barClass} ${isPast ? 'tl-past' : ''}`}
-                  style={{ animationDelay: `${hour * 0.03}s` }}
-                />
-              </div>
-            );
-          })}
-        </div>
-        <div className="relative mt-1.5 h-3">
-          <div className="absolute inset-x-0 top-1/2 h-px bg-subtle-c" style={{ borderTop: '1px solid var(--border-subtle)' }} />
-          {isToday && currentMin >= 0 && (
-            <div
-              className="tl-now absolute top-0 z-10"
-              style={{ left: `${(currentMin / 1440) * 100}%` }}
-            >
-              <div className="-translate-x-1/2 rounded-full bg-blue-500 px-1.5 py-px text-[8px] font-bold text-white shadow-lg shadow-blue-500/50">
-                {minutesToTime(currentMin)}
-              </div>
-              <div className="mx-auto h-2.5 w-0.5 rounded-full bg-blue-500" />
-            </div>
-          )}
+        <div className="relative mb-1 h-4">
           <div className="flex justify-between pt-0.5">
             {[0, 6, 12, 18].map((h) => (
               <span key={h} className="text-[8px] font-medium text-muted-c">{String(h).padStart(2, '0')}</span>
             ))}
             <span className="text-[8px] font-medium text-muted-c">24</span>
           </div>
+          {isToday && currentMin >= 0 && (
+            <div className="tl-now absolute -top-0.5 z-10" style={{ left: `${(currentMin / 1440) * 100}%` }}>
+              <div className="-translate-x-1/2 rounded-full bg-blue-500 px-1.5 py-px text-[8px] font-bold text-white shadow-lg shadow-blue-500/50">
+                {minutesToTime(currentMin)}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="relative flex h-4 gap-[3px]" style={{ padding: '0 1px' }}>
+          {slots24.map(({ hour, status }) => {
+            const isPast = isToday && currentMin >= (hour + 1) * 60;
+            const barClass = status === 'on' ? 'tl-on' : 'tl-off';
+
+            return (
+              <div key={hour} className="flex h-full flex-1">
+                <div
+                  className={`graph-bar-anim relative w-full rounded-[3px] ${barClass} ${isPast ? 'tl-past' : ''}`}
+                  style={{ animationDelay: `${hour * 0.03}s` }}
+                />
+              </div>
+            );
+          })}
+          {isToday && currentMin >= 0 && (
+            <div
+              className="tl-now absolute bottom-[-2px] top-[-2px] z-10 w-[3px] rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.9)]"
+              style={{ left: `calc(${(currentMin / 1440) * 100}% - 1.5px + 1px)` }}
+            />
+          )}
         </div>
 
         {showStats && isToday && (() => {
