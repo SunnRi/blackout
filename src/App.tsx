@@ -694,8 +694,8 @@ function Onboarding({
                   {notifyEnabled && (
                     <div className="mt-2.5">
                       <p className="mb-1.5 text-[11px] text-secondary-c">Попередити за:</p>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {[30, 60].map((mins) => (
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[15, 30, 60].map((mins) => (
                           <button
                             key={mins}
                             onClick={() => { setNotifyMinutes(mins); hapticImpact('light'); }}
@@ -1692,8 +1692,8 @@ function App() {
                 {notifyEnabled && (
                   <div className="mt-2.5">
                     <p className="mb-1.5 text-[11px] text-secondary-c">Попередити за:</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {[30, 60].map((mins) => (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[15, 30, 60].map((mins) => (
                         <button
                           key={mins}
                           onClick={() => { setNotifyMinutes(mins); hapticImpact('light'); }}

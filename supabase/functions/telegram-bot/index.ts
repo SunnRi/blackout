@@ -203,6 +203,7 @@ function settingsKeyboard(notifyEnabled: boolean, minutes: number) {
         callback_data: "toggle_notify",
       }],
       [
+        { text: `${minutes === 15 ? "✓ " : ""}15 хв`, callback_data: "notify:15" },
         { text: `${minutes === 30 ? "✓ " : ""}30 хв`, callback_data: "notify:30" },
         { text: `${minutes === 60 ? "✓ " : ""}60 хв`, callback_data: "notify:60" },
       ],
@@ -399,7 +400,7 @@ async function handleHelp(chatId: number) {
 ` +
       `<b>1.</b> 📲 Натисніть <b>синю кнопку меню зліва</b> внизу чата (біля поля введення) — відкриється додаток «Графік світла». Оберіть там область, місто і чергу
 ` +
-      `<b>2.</b> У «🔔 Сповіщення» увімкніть повідомлення й оберіть інтервал — 30 або 60 хвилин
+      `<b>2.</b> У «🔔 Сповіщення» увімкніть повідомлення й оберіть інтервал — 15, 30 або 60 хвилин
 ` +
       `<b>3.</b> Я сам напишу, коли світло вимкнуть, і повідомлю про зміни графіка
 
@@ -647,7 +648,7 @@ Deno.serve(async (req: Request) => {
         await updateNotifySettings(userId, { notify_enabled: newValue });
         await answerCallback(cb.id, newValue ? "🔔 Сповіщення увімкнені" : "🔕 Сповіщення вимкнені");
         if (messageId) await handleSettings(chatId, userId, messageId);
-      } else if (cb.data === "notify:30" || cb.data === "notify:60") {
+      } else if (cb.data === "notify:15" || cb.data === "notify:30" || cb.data === "notify:60") {
         const minutes = Number(cb.data.split(":")[1]);
         await updateNotifySettings(userId, { notify_minutes_before: minutes, notify_enabled: true });
         await answerCallback(cb.id, `⏰ Попереджатимемо за ${minutes} хв`);
