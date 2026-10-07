@@ -276,7 +276,7 @@ async function checkCity(
             text,
             reply_markup: {
               inline_keyboard: [[
-                { text: "⚡️ Переглянути оновлення", web_app: { url: MINI_APP_URL } },
+                { text: "⚡️ Переглянути оновлення", web_app: { url: `${MINI_APP_URL}?screen=changes` } },
               ]],
             },
           }),

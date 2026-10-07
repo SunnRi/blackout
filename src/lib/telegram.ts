@@ -4,6 +4,7 @@ declare global {
       WebApp: {
         initData: string;
         initDataUnsafe: {
+          start_param?: string;
           user?: {
             id: number;
             first_name: string;
@@ -79,6 +80,16 @@ export function initTelegramWebApp() {
 export function getTelegramUser(): TGUser | null {
   const tg = getTelegramWebApp();
   return tg?.initDataUnsafe?.user ?? null;
+}
+
+// Telegram opens a mini app either via a ?screen=... URL query (web_app button)
+// or a start_param (direct link). Returns the requested screen name, if any.
+export function getTelegramStartScreen(): string | null {
+  const tg = getTelegramWebApp();
+  const param = tg?.initDataUnsafe?.start_param
+    ?? new URLSearchParams(window.location.search).get('screen');
+  if (!param) return null;
+  return /^[a-z_]{1,32}$/.test(param) ? param : null;
 }
 
 export function hapticImpact(style: 'light' | 'medium' | 'heavy' = 'light') {

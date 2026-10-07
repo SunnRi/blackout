@@ -9,7 +9,7 @@ import {
 import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
 import {
-  initTelegramWebApp, getTelegramUser, getTelegramWebApp, hapticImpact, hapticNotification,
+  initTelegramWebApp, getTelegramUser, getTelegramWebApp, getTelegramStartScreen, hapticImpact, hapticNotification,
   setTelegramThemeColors,
 } from '@/lib/telegram';
 import {
@@ -1020,6 +1020,14 @@ function App() {
   const lastSeenChangeRef = useRef<string>(localStorage.getItem('lastSeenChangeAt') ?? '');
   const [densityMenuOpen, setDensityMenuOpen] = useState(false);
 
+  // Deep link from the bot's "schedule updated" notification: the button opens
+  // the mini app with ?screen=changes, landing the user straight on the change
+  // history once their city is restored.
+  const [pendingView, setPendingView] = useState<View | null>(() => {
+    const screen = getTelegramStartScreen();
+    return screen === 'changes' ? 'changes' : null;
+  });
+
   useEffect(() => {
     if (!selectedOblast || !selectedCity) return;
     let cancelled = false;
@@ -1049,6 +1057,14 @@ function App() {
     localStorage.setItem('lastSeenChangeAt', ts);
     setUnseenChanges(false);
   }, [view]);
+
+  // Apply the deep-linked screen once onboarding state is resolved and the
+  // city is restored — the changes view needs oblast + city to render.
+  useEffect(() => {
+    if (!pendingView || !onboarded || !prefsChecked || !selectedOblast || !selectedCity) return;
+    setView(pendingView);
+    setPendingView(null);
+  }, [pendingView, onboarded, prefsChecked, selectedOblast, selectedCity]);
 
   useEffect(() => { initTelegramWebApp(); }, []);
 
