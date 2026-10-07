@@ -729,6 +729,7 @@ function formatDayLabel(day: string): string {
 function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug: string }) {
   const [groups, setGroups] = useState<ChangeGroup[] | null>(null);
   const [error, setError] = useState(false);
+  const [lastChecked, setLastChecked] = useState<string | null>(null);
 
   useEffect(() => {
     setGroups(null); setError(false);
@@ -748,6 +749,17 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
           g.items.push({ queue: r.queue, day: r.day, changeType: r.change_type, summary: r.summary });
         }
         setGroups([...byTime.values()]);
+      });
+    supabase
+      .from('schedule_snapshots')
+      .select('updated_at')
+      .eq('oblast_slug', oblastSlug)
+      .eq('city_slug', citySlug)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        const row = (data ?? [])[0] as { updated_at: string } | undefined;
+        setLastChecked(row?.updated_at ?? null);
       });
   }, [oblastSlug, citySlug]);
 
@@ -774,7 +786,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
         <History className="mx-auto mb-2 h-10 w-10 text-muted-c" />
         <p className="text-sm font-semibold text-primary-c">Змін ще не було</p>
         <p className="mx-auto mt-1 max-w-xs text-xs text-secondary-c">
-          Графік для вашого міста стабільний. Ми перевіряємо оновлення кожні 30 хвилин — і тут з'явиться, що саме змінилося.
+          Ми стежимо за графіком вашого міста — щойно енергетики щось змінять, тут з'явиться, що саме змінилося: нові відключення, скасовані чи перенесені за часом.
         </p>
       </div>
     );
@@ -782,6 +794,11 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
 
   return (
     <div className="space-y-3">
+      {lastChecked && (
+        <p className="text-center text-[11px] text-muted-c">
+          Остання перевірка: {formatChangeTime(lastChecked)}
+        </p>
+      )}
       {groups.map((g) => (
         <div key={g.detectedAt} className="d-card px-3.5 py-3 fade-in">
           <div className="mb-2 flex items-center gap-2">
@@ -796,7 +813,6 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
                 <div className="flex items-center gap-1.5">
                   <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
                   <span className="text-[10px] text-muted-c">{formatDayLabel(it.day)}</span>
-                  {it.changeType === 'initial' && <span className="text-[10px] text-muted-c">· перший знімок</span>}
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
               </div>
@@ -844,7 +860,6 @@ function App() {
   const tgUser = useMemo(() => getTelegramUser(), []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedCityKeyRef = useRef<string>('');
-  const lastConfirmedPrefRef = useRef<string>('');
 
   useEffect(() => { initTelegramWebApp(); }, []);
 
@@ -940,44 +955,52 @@ function App() {
     if (!tgUser || !selectedOblast || !selectedCity || !selectedGroup) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
-      await supabase.from('user_preferences').upsert({
-        tg_user_id: tgUser.id, tg_username: tgUser.username ?? null,
-        oblast_slug: selectedOblast.slug,
-        city_slug: selectedCity.slug, city_name: selectedCity.name,
-        queue_group: selectedGroup,
-        notify_enabled: notifyEnabled, notify_minutes_before: notifyMinutes,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'tg_user_id' });
-      // Ask the bot to confirm the choice in the chat, so the user does not
-      // have to pick city/queue there again. Only on an actual city/queue
-      // change, not on every notification-settings tweak.
       const prefKey = `${selectedOblast.slug}|${selectedCity.slug}|${selectedGroup}`;
-      if (lastConfirmedPrefRef.current === prefKey) {
+      // Compare against what is actually stored right now: confirm in the chat
+      // only when the stored city/queue differ from the current selection.
+      // The in-memory state may still be settling from the initial DB restore,
+      // so a stored-vs-selected comparison at save time is the only reliable check.
+      const { data: existing } = await supabase
+        .from('user_preferences')
+        .select('oblast_slug, city_slug, queue_group')
+        .eq('tg_user_id', tgUser.id)
+        .maybeSingle();
+      const storedKey = existing
+        ? `${(existing as { oblast_slug: string | null }).oblast_slug ?? ''}|${(existing as { city_slug: string | null }).city_slug ?? ''}|${(existing as { queue_group: string | null }).queue_group ?? ''}`
+        : '';
+      const changed = storedKey !== prefKey;
+      if (changed) {
+        await supabase.from('user_preferences').upsert({
+          tg_user_id: tgUser.id, tg_username: tgUser.username ?? null,
+          oblast_slug: selectedOblast.slug,
+          city_slug: selectedCity.slug, city_name: selectedCity.name,
+          queue_group: selectedGroup,
+          notify_enabled: notifyEnabled, notify_minutes_before: notifyMinutes,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'tg_user_id' });
+        const tg = getTelegramWebApp();
+        if (tg?.initData) {
+          try {
+            await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-bot`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                action: 'prefs_saved',
+                initData: tg.initData,
+                city: selectedCity.name,
+                queue: selectedGroup,
+              }),
+            });
+          } catch { /* confirmation is best-effort */ }
+        }
+      }
+      if (changed) {
         setSaved(true); hapticNotification('success');
         setTimeout(() => setSaved(false), 2000);
-        return;
       }
-      lastConfirmedPrefRef.current = prefKey;
-      const tg = getTelegramWebApp();
-      if (tg?.initData) {
-        try {
-          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-bot`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({
-              action: 'prefs_saved',
-              initData: tg.initData,
-              city: selectedCity.name,
-              queue: selectedGroup,
-            }),
-          });
-        } catch { /* confirmation is best-effort */ }
-      }
-      setSaved(true); hapticNotification('success');
-      setTimeout(() => setSaved(false), 2000);
     }, 1500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [tgUser, selectedOblast, selectedCity, selectedGroup, notifyEnabled, notifyMinutes]);
@@ -1289,7 +1312,7 @@ function App() {
           <div className="fade-in">
             <p className="mb-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-c">
               <RefreshCw className="h-3 w-3" />
-              <span>Перевіряємо оновлення кожні 30 хв · {selectedCity.name}</span>
+              <span>Стежимо за графіком щогодини · {selectedCity.name}</span>
             </p>
             <ChangeHistory oblastSlug={selectedOblast.slug} citySlug={selectedCity.slug} />
             <button

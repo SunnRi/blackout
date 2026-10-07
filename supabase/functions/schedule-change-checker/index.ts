@@ -100,29 +100,52 @@ function formatMinutes(min: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-function describeDiff(oldSlots: Slot[], newSlots: Slot[]): string {
-  const oldSet = new Map(oldSlots.map((s) => [slotsFingerprint([s]), s]));
-  const newSet = new Map(newSlots.map((s) => [slotsFingerprint([s]), s]));
-  const added: Slot[] = [];
-  const removed: Slot[] = [];
-  for (const [fp, s] of newSet) if (!oldSet.has(fp)) added.push(s);
-  for (const [fp, s] of oldSet) if (!newSet.has(fp)) removed.push(s);
+function fmtRange(s: Slot): string {
+  return `${formatMinutes(s.start)}–${formatMinutes(s.end)}`;
+}
 
-  const off = (s: Slot) => s.type === "Definite" || s.type === "off";
+function listSlots(slots: Slot[]): string {
+  const txt = slots.slice(0, 3).map(fmtRange).join(", ");
+  return slots.length > 3 ? `${txt} та ще ${slots.length - 3}` : txt;
+}
+
+function describeDiff(oldSlots: Slot[], newSlots: Slot[]): string {
+  const key = (s: Slot) => `${s.start}-${s.end}:${s.type}`;
+  const oldSet = new Set(oldSlots.map(key));
+  const newSet = new Set(newSlots.map(key));
+  const added = newSlots.filter((s) => !oldSet.has(key(s)));
+  const removed = oldSlots.filter((s) => !newSet.has(key(s)));
+
+  const isOff = (s: Slot) => s.type === "Definite" || s.type === "off";
+  const addedOff = added.filter(isOff);
+  const removedOff = removed.filter(isOff);
+
+  // An outage that moved slightly (e.g. 14:00–16:00 → 15:00–17:00) reads
+  // better as a time shift than as separate add + remove.
+  const shifted: string[] = [];
+  const usedRemoved = new Set<number>();
+  const pureAdded: Slot[] = [];
+  for (const a of addedOff) {
+    const idx = removedOff.findIndex((r, i) =>
+      !usedRemoved.has(i) && r.start < a.end && a.start < r.end);
+    if (idx >= 0) {
+      usedRemoved.add(idx);
+      shifted.push(`${fmtRange(removedOff[idx])} на ${fmtRange(a)}`);
+    } else {
+      pureAdded.push(a);
+    }
+  }
+  const pureRemoved = removedOff.filter((_, i) => !usedRemoved.has(i));
+
   const parts: string[] = [];
-  const addedOff = added.filter(off);
-  const removedOff = removed.filter(off);
-  if (addedOff.length > 0) {
-    parts.push(`+ відключення: ${addedOff.slice(0, 3).map((s) => `${formatMinutes(s.start)}–${formatMinutes(s.end)}`).join(", ")}${addedOff.length > 3 ? ` і ще ${addedOff.length - 3}` : ""}`);
-  }
-  if (removedOff.length > 0) {
-    parts.push(`− відключення: ${removedOff.slice(0, 3).map((s) => `${formatMinutes(s.start)}–${formatMinutes(s.end)}`).join(", ")}${removedOff.length > 3 ? ` і ще ${removedOff.length - 3}` : ""}`);
-  }
-  const addedOn = added.filter((s) => !off(s));
-  const removedOn = removed.filter((s) => !off(s));
-  if (addedOn.length > 0) parts.push(`+ світло: ${addedOn.slice(0, 3).map((s) => `${formatMinutes(s.start)}–${formatMinutes(s.end)}`).join(", ")}`);
-  if (removedOn.length > 0) parts.push(`− світло: ${removedOn.slice(0, 3).map((s) => `${formatMinutes(s.start)}–${formatMinutes(s.end)}`).join(", ")}`);
-  return parts.join("; ") || "графік оновлено";
+  if (shifted.length > 0) parts.push(`Час відключення змістили: ${shifted.join(", ")}`);
+  if (pureAdded.length > 0) parts.push(`Додали відключення: ${listSlots(pureAdded)}`);
+  if (pureRemoved.length > 0) parts.push(`Скасували відключення: ${listSlots(pureRemoved)}`);
+  const addedOn = added.filter((s) => !isOff(s));
+  const removedOn = removed.filter((s) => !isOff(s));
+  if (addedOn.length > 0) parts.push(`Додали світло: ${listSlots(addedOn)}`);
+  if (removedOn.length > 0) parts.push(`Прибрали світло: ${listSlots(removedOn)}`);
+  return parts.join(". ") || "Графік оновили без детальних змін";
 }
 
 async function checkCity(
@@ -169,11 +192,8 @@ async function checkCity(
       const key = `${sched.queue}|${day}`;
       const prevFp = prev.get(key)?.fingerprint;
       if (prevFp === undefined) {
-        changes.push({
-          oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, day,
-          change_type: "initial",
-          summary: `Перший знімок графіка: ${sched.slots.length} інтервалів`,
-        });
+        // First sighting of this queue: record the baseline snapshot only.
+        // It is not a change, so it stays out of the change log.
       } else if (prevFp !== fp) {
         const prevSlots = prevFp.split("|").filter(Boolean).map((s) => {
           const [range, type] = s.split(":");

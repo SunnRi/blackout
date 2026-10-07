@@ -344,6 +344,21 @@ async function updateNotifySettings(
 }
 
 // ── Messages ──────────────────────────────────────────────────
+// On /start the priority is to get the user into the mini app right away:
+// a prominent open-app button first, regular bot actions below.
+function startKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "📊 Відкрити графік світла", web_app: { url: MINI_APP_URL } }],
+      [
+        { text: "🟢 Мій статус", callback_data: "status" },
+        { text: "🕒 Коли світло", callback_data: "next" },
+      ],
+      [{ text: "🔔 Сповіщення", callback_data: "settings" }],
+    ],
+  };
+}
+
 async function handleStart(msg: TGMessage) {
   const chatId = msg.chat.id;
   const name = msg.from?.first_name ?? "друг";
@@ -355,7 +370,9 @@ async function handleStart(msg: TGMessage) {
       `⚡️ <b>Світло Бот</b> — ваш помічник у графіках відключень.
 
 ` +
-      `⬇️ Натисніть <b>синю кнопку меню слева</b> (біля поля введення), щоб відкрити додаток «Графік світла».
+      `⬇️ Натисніть кнопку <b>«Відкрити графік світла»</b> під цим повідомленням — додаток відкриється одразу.
+` +
+      `(Та сама дія — синя кнопка меню <b>слева</b> біля поля введення.)
 
 ` +
       `<b>Що я вмію:</b>
@@ -370,7 +387,7 @@ async function handleStart(msg: TGMessage) {
 
 ` +
       `<i>Спочатку оберіть місто та чергу у додатку, потім увімкніть сповіщення 🔔</i>`,
-    mainKeyboard,
+    startKeyboard(),
   );
 }
 
