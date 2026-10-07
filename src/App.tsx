@@ -317,7 +317,8 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
         )}
       </div>
 
-      <div className="d-card p-3">        <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(24, 1fr)' }}>
+      <div className="d-card graph-aura p-3">
+        <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(24, 1fr)' }}>
           {Array.from({ length: 24 }, (_, hour) => {
             const status = getHourStatus(sorted, hour);
             const isCurrent = isToday && currentMin >= hour * 60 && currentMin < (hour + 1) * 60;
@@ -331,7 +332,7 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
               <div key={hour} className="graph-col flex flex-col items-center gap-1"
                 data-tip={`${String(hour).padStart(2, '0')}:00 · ${status === 'on' ? 'є світло' : status === 'off' ? 'без світла' : 'частково'}`}>
                 <div
-                  className={`graph-bar-anim relative w-full rounded-md ${barClass} ${status === 'off' ? 'bar-red-live' : ''} ${isPast ? 'opacity-30' : ''} ${isCurrent ? 'glow-ring' : ''}`}
+                  className={`graph-bar-anim bar-shine relative w-full rounded-md ${barClass} ${status === 'off' ? 'bar-red-live' : ''} ${isPast ? 'opacity-30' : ''} ${isCurrent ? 'glow-ring' : ''}`}
                   style={{ height: '44px', animationDelay: `${hour * 0.03}s` }}
                 >
                   {isCurrent && (
@@ -348,12 +349,12 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
           })}
         </div>
 
-        {showStats && isToday && (
+                {showStats && isToday && (
           <div className="mt-3 border-t border-subtle-c pt-2.5">
             <div className="flex items-center gap-2">
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-1000"
+                  className="day-progress h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500"
                   style={{ width: `${(currentMin / 1440) * 100}%` }}
                 />
               </div>
