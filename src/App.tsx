@@ -131,9 +131,9 @@ const DENSITY_OPTIONS: { id: Density; name: string; desc: string; icon: typeof G
 ];
 
 function getInitialThemeMode(): ThemeMode {
-  if (typeof window === 'undefined') return 'light';
+  if (typeof window === 'undefined') return 'dark';
   const saved = localStorage.getItem('themeMode');
-  return saved === 'dark' ? 'dark' : 'light';
+  return saved === 'light' ? 'light' : 'dark';
 }
 function getInitialDensity(): Density {
   if (typeof window === 'undefined') return 'extended';
@@ -1329,7 +1329,7 @@ function App() {
                   <ChevronLeft className="h-5 w-5 text-primary-c" />
                 </button>
               )}
-              <div className="logo-glow flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 shadow-sm">
+              <div className="logo-glow flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 shadow-sm shadow-indigo-500/40">
                 <Zap className="h-5 w-5 text-white" />
               </div>
               <div>
@@ -1425,9 +1425,9 @@ function App() {
         {view === 'schedule' && (
           <div className="relative isolate">
             <div className="pointer-events-none absolute inset-x-0 -top-6 -z-10 flex justify-center">
-              <div className="underlay-breathe h-56 w-80 rounded-full bg-blue-500/20 blur-[90px]" />
+              <div className="underlay-breathe h-56 w-80 rounded-full bg-indigo-500/25 blur-[90px]" />
             </div>
-            <div className="pointer-events-none absolute -right-10 top-64 -z-10 h-40 w-40 rounded-full bg-emerald-500/15 blur-[70px]" />
+            <div className="pointer-events-none absolute -right-10 top-64 -z-10 h-40 w-40 rounded-full bg-violet-500/15 blur-[70px]" />
                 <div className="mb-4 text-center fade-in">
                   <div className="clock-glow font-mono text-5xl font-bold tracking-tight text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{now.timeString}</div>
                 </div>

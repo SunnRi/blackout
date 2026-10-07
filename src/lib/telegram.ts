@@ -62,7 +62,7 @@ export function getTelegramWebApp() {
 export function setTelegramThemeColors(mode: 'light' | 'dark') {
   const tg = getTelegramWebApp();
   if (!tg) return;
-  const color = mode === 'dark' ? '#000000' : '#eef1f6';
+  const color = mode === 'dark' ? '#05060f' : '#eef1f6';
   if (tg.setHeaderColor) tg.setHeaderColor(color);
   if (tg.setBackgroundColor) tg.setBackgroundColor(color);
 }
