@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Zap, ZapOff, MapPin, Clock, Loader2,
   CheckCircle2, Sun, Moon, Bell, BellOff, ChevronLeft,
-  Search, Settings, Calendar, Power, ArrowDownUp,
+  Search, Settings, ArrowDownUp,
 } from 'lucide-react';
 import { supabase, type UserPreferences } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -211,8 +211,6 @@ function ScheduleList({ slots, now }: { slots: Slot[]; now: KyivTime }) {
       {sorted.map((slot, i) => {
         const active = isSlotActive(slot, now);
         const isOff = slot.type === 'Definite';
-        const prevSlot = sorted[i - 1];
-        const nextSlot = sorted[i + 1];
 
         return (
           <div key={i}>

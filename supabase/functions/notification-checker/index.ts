@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
     }
 
     for (const [citySlug, cityUsers] of cityGroups) {
-      let slotsByQueue: Record<string, Slot[]> = {};
+      const slotsByQueue: Record<string, Slot[]> = {};
 
       if (citySlug === "kyiv") {
         // Yasno API for Kyiv city
@@ -142,7 +142,8 @@ Deno.serve(async (req: Request) => {
         if (!resp.ok) continue;
         const planned = await resp.json();
         for (const [group, data] of Object.entries(planned)) {
-          const todaySlots = (data as any)?.today?.slots || [];
+          const todayData = (data as Record<string, unknown>)?.today as { slots: Slot[] } | undefined;
+          const todaySlots = todayData?.slots ?? [];
           slotsByQueue[group] = todaySlots;
         }
       } else {

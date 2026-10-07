@@ -33,12 +33,6 @@ type CitySchedule = {
 // ── Parse bezsvitla HTML to extract schedule data ─────────────
 function parseBezsvitla(html: string): QueueSchedule[] {
   const results: QueueSchedule[] = [];
-  const queuePattern = /Черга\s+(\d\.\d)/g;
-  const slotPattern =
-    /bz-schedule-slot--(on|off)[^>]*>.*?(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/gs;
-
-  // Split by "Черга X.X" to isolate each queue section
-  const sections = html.split(/Черга\s+\d\.\d/);
   const queueMatches = [...html.matchAll(/Черга\s+(\d\.\d)/g)];
 
   for (let i = 0; i < queueMatches.length; i++) {
@@ -155,13 +149,13 @@ Deno.serve(async (req: Request) => {
           // Transform to unified format
           const schedules: QueueSchedule[] = [];
           for (const [group, data] of Object.entries(planned)) {
-            const todaySlots = (data as any)?.today?.slots || [];
-            schedules.push({ queue: group, slots: todaySlots });
+            const todaySlots = (data as Record<string, unknown>)?.today as { slots: Slot[] } | undefined;
+            schedules.push({ queue: group, slots: todaySlots?.slots ?? [] });
           }
           const result: CitySchedule = {
             city: "kyiv",
             source: "yasno",
-            updated: (planned["1.1"] as any)?.updatedOn || null,
+            updated: ((planned["1.1"] as Record<string, unknown>)?.updatedOn as string) ?? null,
             schedules,
           };
           return jsonResponse(result);
@@ -204,7 +198,8 @@ Deno.serve(async (req: Request) => {
           const planned = await plannedResp.json();
           const schedules: QueueSchedule[] = [];
           for (const [group, data] of Object.entries(planned)) {
-            const tomorrowSlots = (data as any)?.tomorrow?.slots || [];
+            const tomorrowData = (data as Record<string, unknown>)?.tomorrow as { slots: Slot[] } | undefined;
+            const tomorrowSlots = tomorrowData?.slots ?? [];
             if (tomorrowSlots.length > 0) {
               schedules.push({ queue: group, slots: tomorrowSlots });
             }
@@ -212,7 +207,7 @@ Deno.serve(async (req: Request) => {
           const result: CitySchedule = {
             city: "kyiv",
             source: "yasno",
-            updated: (planned["1.1"] as any)?.updatedOn || null,
+            updated: ((planned["1.1"] as Record<string, unknown>)?.updatedOn as string) ?? null,
             schedules,
           };
           return jsonResponse(result);
