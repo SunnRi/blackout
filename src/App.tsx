@@ -37,6 +37,27 @@ function formatCountdown(mins: number): string {
   return `${m}хв`;
 }
 
+function pluralHours(n: number): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'година';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'години';
+  return 'годин';
+}
+
+function formatHours(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (m === 0) return `${h} ${pluralHours(h)}`;
+  return `${h} ${pluralHours(h)} ${m} хвилин`;
+}
+
+function pluralOutages(n: number): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'відключення';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'відключення';
+  return 'відключень';
+}
+
 function isSlotActive(slot: Slot, now: KyivTime): boolean {
   const cur = now.hours * 60 + now.minutes;
   return cur >= slot.start && cur < slot.end;
@@ -243,18 +264,26 @@ function StatusFull({ slots, now }: { slots: Slot[]; now: KyivTime }) {
           <p className="text-sm text-secondary-c">Більше відключень не заплановано</p>
         )}
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <div className={`rounded-xl py-2 ${isOff ? 'bg-red-500/8' : 'bg-emerald-500/8'}`}>
-          <p className="text-sm font-bold text-primary-c">{(offMins / 60).toFixed(1)}г</p>
-          <p className="text-[9px] text-muted-c">без світла</p>
+      <div className="mt-3 rounded-xl bg-black/4 px-3.5 py-3 dark:bg-white/6">
+        <div className="flex h-2.5 w-full overflow-hidden rounded-full">
+          <div className="bg-red-400" style={{ width: `${(offMins / 1440) * 100}%` }} />
+          <div className="bg-emerald-400" style={{ width: `${(1 - offMins / 1440) * 100}%` }} />
         </div>
-        <div className={`rounded-xl py-2 ${isOff ? 'bg-red-500/8' : 'bg-emerald-500/8'}`}>
-          <p className="text-sm font-bold text-primary-c">{((1440 - offMins) / 60).toFixed(1)}г</p>
-          <p className="text-[9px] text-muted-c">зі світлом</p>
+        <div className="mt-2.5 space-y-1.5">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-red-400" />
+            <span className="font-bold text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatHours(offMins)}</span>
+            <span className="text-secondary-c">без світла</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+            <span className="font-bold text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatHours(1440 - offMins)}</span>
+            <span className="text-secondary-c">зі світлом</span>
+          </div>
         </div>
-        <div className={`rounded-xl py-2 ${isOff ? 'bg-red-500/8' : 'bg-emerald-500/8'}`}>
-          <p className="text-sm font-bold text-primary-c">{outagesCount}</p>
-          <p className="text-[9px] text-muted-c">відключень</p>
+        <div className="mt-2.5 flex items-center justify-between border-t border-subtle-c pt-2 text-xs">
+          <span className="text-muted-c">Відключень за день</span>
+          <span className="font-bold text-primary-c">{outagesCount} {pluralOutages(outagesCount)}</span>
         </div>
       </div>
     </div>
@@ -747,6 +776,8 @@ const isOffSlot = (s: DiffSlot) => s.type === 'Definite' || s.type === 'off';
 // Візуальне порівняння "Було / Стало": два рядки з часовими шкалами, де
 // червоні сегменти — відключення. Додані хвилини підсвічені червоним рамком,
 // прибрані — зеленим. Знизу короткий людський підсумок.
+// Сравнение "Було / Стало": строки с временем, где зачёркнуто старое и
+// показано новое, плюс цветные бейджи что добавилось и что отменилось.
 function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: DiffSlot[] }) {
   const keyOf = (s: DiffSlot) => `${s.start}-${s.end}`;
   const oldOff = oldSlots.filter(isOffSlot);
@@ -756,6 +787,8 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
 
   const added = newOff.filter((s) => !oldKeys.has(keyOf(s)));
   const removed = oldOff.filter((s) => !newKeys.has(keyOf(s)));
+  const keptOld = oldOff.filter((s) => newKeys.has(keyOf(s)));
+  const keptNew = newOff.filter((s) => oldKeys.has(keyOf(s)));
 
   const fmt = (m: number) => formatMinutes(m === 1440 ? 1439 : m);
   const fmtRange = (s: DiffSlot) => `${fmt(s.start)} – ${fmt(s.end)}`;
@@ -766,92 +799,78 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
     );
   }
 
-  const bounds = [0, 1440, ...oldOff.map((s) => s.start), ...oldOff.map((s) => s.end), ...newOff.map((s) => s.start), ...newOff.map((s) => s.end)];
-  const min = Math.min(...bounds);
-  const max = Math.max(...bounds);
-  const span = Math.max(max - min, 1);
-
-  const parts = (slots: DiffSlot[]) => {
-    const out: { from: number; to: number; off: boolean }[] = [];
-    let cursor = min;
-    for (const s of slots) {
-      if (s.start > cursor) out.push({ from: cursor, to: s.start, off: false });
-      out.push({ from: s.start, to: s.end, off: true });
-      cursor = Math.max(cursor, s.end);
-    }
-    if (cursor < max) out.push({ from: cursor, to: max, off: false });
-    return out;
-  };
-
-  const oldParts = parts(oldOff);
-  const newParts = parts(newOff);
-
-  const Bar = ({ p }: { p: { from: number; to: number; off: boolean }[] }) => (
-    <div className="flex h-3.5 w-full gap-px overflow-hidden rounded-full" style={{ background: 'transparent' }}>
-      {p.map((seg, i) => (
-        <div
-          key={i}
-          className={seg.off ? 'bg-red-400/80' : 'bg-emerald-400/50'}
-          style={{ width: `${((seg.to - seg.from) / span) * 100}%` }}
-        />
-      ))}
+  const Row = ({ label, tone, children }: { label: string; tone: 'was' | 'now'; children: React.ReactNode }) => (
+    <div className="flex items-start gap-2.5">
+      <span
+        className="mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+        style={
+          tone === 'was'
+            ? { background: 'rgba(120,120,128,0.12)', color: 'var(--text-muted, #8e8e93)' }
+            : { background: 'color-mix(in srgb, var(--on-negative) 14%, transparent)', color: 'var(--on-negative)' }
+        }
+      >
+        {label}
+      </span>
+      <div className="min-w-0 flex-1 space-y-1">{children}</div>
     </div>
   );
 
-  const summaryLines: string[] = [];
-  if (removed.length > 0) {
-    summaryLines.push(`Світло буде замість відключення ${removed.map(fmtRange).join(', ')}`);
-  }
-  if (added.length > 0) {
-    summaryLines.push(`Додали відключення ${added.map(fmtRange).join(', ')}`);
-  }
-  if (newOff.length === 0) {
-    summaryLines.push('Відключень не буде взагалі');
-  }
-
   return (
-    <div className="mt-2 space-y-1.5">
-      <div className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
-        <div className="mb-1 flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-c">Було</span>
-          {oldOff.length === 0 && <span className="text-[10px] text-muted-c">відключень не було</span>}
-        </div>
-        {oldOff.length > 0 && <Bar p={oldParts} />}
-        <div className="mt-1 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {oldOff.length > 0
-            ? <span className="text-secondary-c">{oldOff.map(fmtRange).join(', ')}</span>
-            : <span className="text-muted-c">світло весь день</span>}
-        </div>
-      </div>
+    <div className="mt-2 space-y-2.5 rounded-xl bg-black/4 px-3 py-2.5 dark:bg-white/6">
+      <Row label="Було" tone="was">
+        {oldOff.length === 0 ? (
+          <p className="text-xs text-secondary-c">Світло буде весь день</p>
+        ) : (
+          <div className="space-y-1">
+            {keptOld.map((s, i) => (
+              <p key={`k${i}`} className="text-xs text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                Відключення <b>{fmtRange(s)}</b>
+              </p>
+            ))}
+            {removed.map((s, i) => (
+              <p key={`r${i}`} className="text-xs text-muted-c line-through" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                Відключення {fmtRange(s)}
+              </p>
+            ))}
+          </div>
+        )}
+      </Row>
 
-      <div className="flex justify-center">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black/5 dark:bg-white/10">
-          <ArrowDown className="h-3 w-3 text-muted-c" />
-        </span>
-      </div>
+      <Row label="Стало" tone="now">
+        {newOff.length === 0 ? (
+          <p className="text-xs font-semibold" style={{ color: 'var(--on-positive)' }}>Світло буде весь день — відключень немає</p>
+        ) : (
+          <div className="space-y-1">
+            {keptNew.map((s, i) => (
+              <p key={`k${i}`} className="text-xs text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                Відключення <b>{fmtRange(s)}</b>
+              </p>
+            ))}
+            {added.map((s, i) => (
+              <p key={`a${i}`} className="text-xs font-bold" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--on-negative)' }}>
+                Відключення {fmtRange(s)}
+              </p>
+            ))}
+          </div>
+        )}
+      </Row>
 
-      <div className="rounded-xl px-3 py-2" style={{ background: 'color-mix(in srgb, var(--on-negative) 8%, transparent)' }}>
-        <div className="mb-1 flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-c">Стало</span>
-          {newOff.length === 0 && <span className="text-[10px]" style={{ color: 'var(--on-positive)' }}>відключень не буде</span>}
-        </div>
-        {newOff.length > 0 && <Bar p={newParts} />}
-        <div className="mt-1 text-[11px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {newOff.length > 0
-            ? <span className="text-primary-c font-semibold">{newOff.map(fmtRange).join(', ')}</span>
-            : <span className="text-muted-c">світло весь день</span>}
-        </div>
-      </div>
-
-      <div className="space-y-0.5">
-        {summaryLines.map((line, i) => (
-          <p key={i} className="text-xs font-medium leading-snug text-primary-c">
-            {line.startsWith('Світло буде')
-              ? <><span style={{ color: 'var(--on-positive)' }}>✓</span> {line}</>
-              : <><span style={{ color: 'var(--on-negative)' }}>✕</span> {line}</>}
-          </p>
-        ))}
-      </div>
+      {removed.length > 0 && (
+        <p className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--on-positive)' }}>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full" style={{ background: 'color-mix(in srgb, var(--on-positive) 16%, transparent)' }}>
+            <ArrowDown className="h-3 w-3 rotate-180" style={{ color: 'var(--on-positive)' }} />
+          </span>
+          Відключення {removed.map(fmtRange).join(', ')} скасовано — світла не буде
+        </p>
+      )}
+      {added.length > 0 && (
+        <p className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--on-negative)' }}>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full" style={{ background: 'color-mix(in srgb, var(--on-negative) 16%, transparent)' }}>
+            <ArrowDown className="h-3 w-3" style={{ color: 'var(--on-negative)' }} />
+          </span>
+          Додали відключення {added.map(fmtRange).join(', ')}
+        </p>
+      )}
     </div>
   );
 }
