@@ -754,7 +754,7 @@ function Onboarding({
 type DiffSlot = { start: number; end: number; type: string };
 type ChangeGroup = {
   detectedAt: string;
-  items: { queue: string; day: string; changeType: string; summary: string; oldSlots: DiffSlot[] | null; newSlots: DiffSlot[] | null }[];
+  items: { queue: string; day: string; scheduleDate: string | null; changeType: string; summary: string; oldSlots: DiffSlot[] | null; newSlots: DiffSlot[] | null }[];
 };
 
 function parseSlotRows(json: unknown): DiffSlot[] {
@@ -784,6 +784,22 @@ function formatChangeTime(iso: string): string {
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   return `${day}.${month} ${hh}:${mm}`;
+}
+
+const MONTHS_UK = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
+
+function formatScheduleDate(scheduleDate: string | null, day: string): string {
+  if (!scheduleDate) return formatDayLabel(day);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(scheduleDate + 'T00:00:00');
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (d.getTime() === today.getTime()) return 'сьогодні';
+  if (d.getTime() === tomorrow.getTime()) return 'завтра';
+  const dayNum = d.getDate();
+  const monthName = MONTHS_UK[d.getMonth()];
+  return `${dayNum} ${monthName}`;
 }
 
 function formatDayLabel(day: string): string {
@@ -892,7 +908,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
     setGroups(null); setError(false);
     supabase
       .from('schedule_change_log')
-      .select('id, queue, day, change_type, summary, detected_at, old_slots, new_slots')
+      .select('id, queue, day, schedule_date, change_type, summary, detected_at, old_slots, new_slots')
       .eq('oblast_slug', oblastSlug)
       .eq('city_slug', citySlug)
       .order('detected_at', { ascending: false })
@@ -904,7 +920,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
           let g = byTime.get(r.detected_at);
           if (!g) { g = { detectedAt: r.detected_at, items: [] }; byTime.set(r.detected_at, g); }
           g.items.push({
-            queue: r.queue, day: r.day, changeType: r.change_type, summary: r.summary,
+            queue: r.queue, day: r.day, scheduleDate: r.schedule_date, changeType: r.change_type, summary: r.summary,
             oldSlots: parseSlotRows(r.old_slots), newSlots: parseSlotRows(r.new_slots),
           });
         }
@@ -971,7 +987,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
               <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
                 <div className="flex items-center gap-1.5">
                   <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
-                  <span className="text-[10px] text-muted-c">{formatDayLabel(it.day)}</span>
+                  <span className="text-[10px] text-muted-c">{formatScheduleDate(it.scheduleDate, it.day)}</span>
                 </div>
                 {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
                   <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
@@ -1071,10 +1087,17 @@ function App() {
       fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ initData: tg.initData, markChangesSeen: true }),
+        body: JSON.stringify({
+          initData: tg.initData,
+          markChangesSeen: true,
+          patch: {
+            oblast_slug: selectedOblast?.slug ?? '',
+            city_slug: selectedCity?.slug ?? '',
+          },
+        }),
       }).catch(() => { /* best-effort */ });
     }
-  }, [view]);
+  }, [view, selectedOblast, selectedCity]);
 
   // Apply the deep-linked screen once onboarding state is resolved and the
   // city is restored — the changes view needs oblast + city to render.
@@ -1158,13 +1181,16 @@ function App() {
             oblast_slug: string | null; city_slug: string | null; city_name: string | null; queue_group: string | null;
             last_seen_changes_at: string | null;
           } | null;
+          city_seen_at?: string | null;
         };
         if (cancelled) return;
         const prefs = json.prefs;
         if (prefs) {
           setNotifyEnabled(prefs.notify_enabled);
           setNotifyMinutes(prefs.notify_minutes_before);
-          if (prefs.last_seen_changes_at) lastSeenChangeRef.current = prefs.last_seen_changes_at;
+          // Use per-city seen timestamp if available, fall back to legacy.
+          const seenAt = json.city_seen_at ?? prefs.last_seen_changes_at;
+          if (seenAt) lastSeenChangeRef.current = seenAt;
           if (prefs.oblast_slug) {
             const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug);
             if (oblast) setSelectedOblast(oblast);

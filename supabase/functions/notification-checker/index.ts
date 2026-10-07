@@ -214,8 +214,7 @@ Deno.serve(async (req: Request) => {
           const minutesUntilOutage = slot.start - currentMinutes;
           if (
             minutesUntilOutage > 0 &&
-            minutesUntilOutage <= user.notify_minutes_before &&
-            minutesUntilOutage >= user.notify_minutes_before - 5
+            minutesUntilOutage <= user.notify_minutes_before
           ) {
             const eventStart = `${todayISO}T${minutesToTimeStr(slot.start)}:00`;
 

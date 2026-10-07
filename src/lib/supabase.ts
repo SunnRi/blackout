@@ -21,6 +21,7 @@ export type ScheduleChange = {
   id: string;
   queue: string;
   day: string;
+  schedule_date: string | null;
   change_type: string;
   summary: string;
   detected_at: string;

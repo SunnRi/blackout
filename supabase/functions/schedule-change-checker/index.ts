@@ -16,7 +16,6 @@ const YASNO_BASE = "https://app.yasno.ua/api/blackout-service/public/shutdowns";
 const YASNO_REGION_ID = 25;
 const YASNO_DSO_ID = 902;
 
-const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 let cronSecretCache: { value: string; at: number } | null = null;
 
 async function getCronSecret(): Promise<string | null> {
@@ -29,13 +28,18 @@ async function getCronSecret(): Promise<string | null> {
   return data;
 }
 
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const RETENTION_DAYS = 14;
 const MINI_APP_URL = Deno.env.get("MINI_APP_URL") ?? "https://bolt.new";
 
+// Minimum number of queues and minimum total slots we expect from a healthy
+// source. If a fetch returns fewer, we treat the source as broken rather than
+// treating the missing queues as "removed".
+const MIN_QUEUES_FOR_HEALTH = 1;
+const MIN_SLOTS_FOR_HEALTH = 1;
+
 type Slot = { start: number; end: number; type: string };
 type QueueSchedule = { queue: string; slots: Slot[] };
-type DaySchedule = { date: string; schedules: QueueSchedule[]; sourceOk: boolean };
+type DaySchedule = { date: string; label: string; schedules: QueueSchedule[]; sourceOk: boolean };
 
 async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -92,15 +96,23 @@ function getTomorrowDateISO(): string {
   return d.toISOString().split("T")[0];
 }
 
-// ── Source validators ─────────────────────────────────────────
+// ── Source health validation ──────────────────────────────────
 // A page that returns 200 but has no "Черга" markers is probably a layout
 // change or error page, not a real schedule. We refuse to treat it as data.
-function bezsvitlaLooksValid(html: string, parsed: QueueSchedule[]): boolean {
-  if (parsed.length > 0) return true;
-  // If the page mentions queues but the parser found no slots, the HTML
-  // structure may have changed — don't trust the empty result.
-  if (/Черга\s+\d\.\d/.test(html)) return false;
-  return false;
+// Additionally, if we expected N queues (from the previous snapshot) but the
+// parser found far fewer, the HTML structure may have changed partially.
+function bezsvitlaLooksValid(html: string, parsed: QueueSchedule[], prevQueueCount: number): boolean {
+  if (parsed.length === 0) return false;
+  // If the page mentions queues but the parser found none, the HTML structure
+  // may have changed — don't trust the empty result.
+  if (/Черга\s+\d\.\d/.test(html) && parsed.length === 0) return false;
+  // If we previously had several queues but now found only 1 with minimal
+  // slots, the page may be partially broken.
+  if (prevQueueCount >= 3 && parsed.length < Math.ceil(prevQueueCount / 2)) return false;
+  // Every parsed queue must have at least MIN_SLOTS_FOR_HEALTH valid slots.
+  const totalSlots = parsed.reduce((sum, q) => sum + q.slots.length, 0);
+  if (totalSlots < MIN_SLOTS_FOR_HEALTH) return false;
+  return true;
 }
 
 async function fetchYasnoSchedule(tomorrow: boolean): Promise<{ schedules: QueueSchedule[]; ok: boolean }> {
@@ -120,13 +132,19 @@ async function fetchYasnoSchedule(tomorrow: boolean): Promise<{ schedules: Queue
       if (tomorrow && slots.length === 0) continue;
       schedules.push({ queue: group, slots });
     }
+    if (schedules.length < MIN_QUEUES_FOR_HEALTH) return { schedules: [], ok: false };
     return { schedules, ok: true };
   } catch {
     return { schedules: [], ok: false };
   }
 }
 
-async function fetchBezsvitlaSchedule(oblastSlug: string, citySlug: string, tomorrow: boolean): Promise<{ schedules: QueueSchedule[]; ok: boolean }> {
+async function fetchBezsvitlaSchedule(
+  oblastSlug: string,
+  citySlug: string,
+  tomorrow: boolean,
+  prevQueueCount: number,
+): Promise<{ schedules: QueueSchedule[]; ok: boolean }> {
   try {
     const url = tomorrow
       ? `${BEZSVITLA_BASE}/${oblastSlug}/${citySlug}/grafik-na-zavtra`
@@ -138,7 +156,7 @@ async function fetchBezsvitlaSchedule(oblastSlug: string, citySlug: string, tomo
     if (!resp.ok) return { schedules: [], ok: false };
     const html = await resp.text();
     const parsed = parseBezsvitla(html);
-    if (!bezsvitlaLooksValid(html, parsed)) return { schedules: [], ok: false };
+    if (!bezsvitlaLooksValid(html, parsed, prevQueueCount)) return { schedules: [], ok: false };
     return { schedules: parsed, ok: true };
   } catch {
     return { schedules: [], ok: false };
@@ -208,9 +226,8 @@ function describeDiff(oldSlots: Slot[], newSlots: Slot[]): string {
 async function checkCity(
   oblastSlug: string,
   citySlug: string,
-  dayData: { date: string; label: string; schedules: QueueSchedule[]; sourceOk: boolean }[],
+  dayData: DaySchedule[],
 ) {
-  // Load previous snapshots for the dates we're checking
   const dates = dayData.map((d) => d.date);
   const { data: prevRows } = await supabase
     .from("schedule_snapshots")
@@ -235,17 +252,15 @@ async function checkCity(
 
   const changes: {
     oblast_slug: string; city_slug: string; queue: string; day: string;
+    schedule_date: date;
     change_type: string; summary: string;
     old_slots: Slot[] | null; new_slots: Slot[] | null;
   }[] = [];
-  const userNotifs: { tg_user_id: number; day: string; queue: string; summary: string }[] = [];
   const upserts: {
     oblast_slug: string; city_slug: string; queue: string; schedule_date: string; fingerprint: string; day: string;
   }[] = [];
 
   for (const day of dayData) {
-    // If the source returned garbage or was unreachable, skip this day
-    // entirely: don't compare, don't delete, don't notify.
     if (!day.sourceOk) continue;
 
     for (const sched of day.schedules) {
@@ -263,29 +278,24 @@ async function checkCity(
         const summary = describeDiff(prevSlots, sched.slots);
         changes.push({
           oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, day: day.label,
+          schedule_date: day.date,
           change_type: "changed",
           summary,
           old_slots: prevSlots, new_slots: sched.slots,
         });
-        for (const f of followers) {
-          if (f.queue_group === sched.queue && f.notify_enabled) {
-            userNotifs.push({ tg_user_id: f.tg_user_id, day: day.label, queue: sched.queue, summary });
-          }
-        }
       }
       upserts.push({ oblast_slug: oblastSlug, city_slug: citySlug, queue: sched.queue, schedule_date: day.date, fingerprint: fp, day: day.label });
     }
 
     // Detect queues that disappeared — but only if the source was healthy
-    // and returned at least one queue. If the source returned zero queues
-    // we cannot distinguish "all schedules removed" from "source broken",
-    // so we err on the side of caution and skip removal detection.
+    // and returned at least one queue.
     if (day.sourceOk && day.schedules.length > 0) {
       for (const [key, snap] of prev) {
         if (!key.endsWith(`|${day.date}`)) continue;
         if (!day.schedules.some((s) => `${s.queue}|${day.date}` === key)) {
           changes.push({
             oblast_slug: oblastSlug, city_slug: citySlug, queue: snap.queue, day: day.label,
+            schedule_date: day.date,
             change_type: "removed",
             summary: "Графік для цієї черги більше не публікується",
             old_slots: null, new_slots: null,
@@ -302,11 +312,36 @@ async function checkCity(
       .upsert(upserts, { onConflict: "oblast_slug,city_slug,queue,schedule_date" });
     if (error) throw new Error(`snapshot upsert: ${error.message}`);
   }
+
+  let insertedChanges: { id: string; queue: string }[] = [];
   if (changes.length > 0) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("schedule_change_log")
-      .insert(changes);
+      .insert(changes)
+      .select("id, queue");
     if (error) throw new Error(`change log insert: ${error.message}`);
+    insertedChanges = data ?? [];
+  }
+
+  // Queue notifications in the outbox instead of sending directly.
+  if (insertedChanges.length > 0 && followers.length > 0) {
+    const outboxRows: { tg_user_id: number; change_id: string }[] = [];
+    for (const ch of insertedChanges) {
+      const change = changes.find((c) => c.queue === ch.queue);
+      if (!change) continue;
+      for (const f of followers) {
+        if (f.queue_group === change.queue && f.notify_enabled) {
+          outboxRows.push({ tg_user_id: f.tg_user_id, change_id: ch.id });
+        }
+      }
+    }
+    if (outboxRows.length > 0) {
+      // Deduplicate: don't insert if the same user+change already exists.
+      const { error: outboxErr } = await supabase
+        .from("notification_outbox")
+        .upsert(outboxRows, { onConflict: "tg_user_id,change_id", ignoreDuplicates: true });
+      if (outboxErr) console.error("outbox insert:", outboxErr.message);
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -320,34 +355,6 @@ async function checkCity(
     }, { onConflict: "oblast_slug,city_slug" });
   if (stateErr) throw new Error(`check state upsert: ${stateErr.message}`);
 
-  if (BOT_TOKEN && userNotifs.length > 0) {
-    const seen = new Set<number>();
-    for (const n of userNotifs) {
-      if (seen.has(n.tg_user_id)) continue;
-      seen.add(n.tg_user_id);
-      const text =
-        `🔔 <b>Оновлення графіків</b>\n\n` +
-        `У вашому місті змінили графік відключень.\n` +
-        `Відкрийте додаток, щоб побачити що саме змінилося 👇`;
-      try {
-        await fetch(`${TELEGRAM_API}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: n.tg_user_id,
-            text,
-            reply_markup: {
-              inline_keyboard: [[
-                { text: "⚡️ Переглянути оновлення", web_app: { url: `${MINI_APP_URL}?screen=changes` } },
-              ]],
-            },
-          }),
-        });
-      } catch (sendErr) {
-        console.error(`notify user ${n.tg_user_id} failed:`, sendErr);
-      }
-    }
-  }
   return changes.length;
 }
 
@@ -367,6 +374,87 @@ async function getCitiesToCheck(): Promise<{ oblast_slug: string; city_slug: str
     list.push({ oblast_slug: r.oblast_slug!, city_slug: r.city_slug! });
   }
   return list;
+}
+
+// ── Outbox sender ─────────────────────────────────────────────
+// Process pending notifications: send via Telegram, retry on failure.
+const TELEGRAM_API = `https://api.telegram.org/bot${Deno.env.get("TELEGRAM_BOT_TOKEN") ?? ""}`;
+const MAX_OUTBOX_ATTEMPTS = 5;
+const OUTBOX_BATCH = 50;
+
+async function processOutbox(): Promise<number> {
+  const { data: pending, error } = await supabase
+    .from("notification_outbox")
+    .select("id, tg_user_id, change_id, attempts")
+    .eq("status", "pending")
+    .lte("next_attempt_at", new Date().toISOString())
+    .order("next_attempt_at", { ascending: true })
+    .limit(OUTBOX_BATCH);
+
+  if (error || !pending || pending.length === 0) return 0;
+
+  let sentCount = 0;
+  for (const item of pending as { id: string; tg_user_id: number; change_id: string; attempts: number }[]) {
+    // Fetch the change details for the message.
+    const { data: changeRow } = await supabase
+      .from("schedule_change_log")
+      .select("queue, summary, day, schedule_date")
+      .eq("id", item.change_id)
+      .maybeSingle();
+
+    const change = changeRow as { queue: string; summary: string; day: string; schedule_date: string | null } | null;
+
+    const text =
+      `🔔 <b>Оновлення графіків</b>\n\n` +
+      `У вашому місті змінили графік відключень${change ? ` (черга ${change.queue})` : ""}.\n` +
+      `Відкрийте додаток, щоб побачити що саме змінилося 👇`;
+
+    let sent = false;
+    try {
+      const resp = await fetch(`${TELEGRAM_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: item.tg_user_id,
+          text,
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "⚡️ Переглянути оновлення", web_app: { url: `${MINI_APP_URL}?screen=changes` } },
+            ]],
+          },
+        }),
+      });
+      const json = await resp.json() as { ok?: boolean };
+      sent = !!json.ok;
+    } catch {
+      sent = false;
+    }
+
+    if (sent) {
+      sentCount++;
+      await supabase
+        .from("notification_outbox")
+        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .eq("id", item.id);
+    } else {
+      // Exponential backoff: 2^attempts minutes, capped.
+      const newAttempts = item.attempts + 1;
+      if (newAttempts >= MAX_OUTBOX_ATTEMPTS) {
+        await supabase
+          .from("notification_outbox")
+          .update({ status: "failed", attempts: newAttempts })
+          .eq("id", item.id);
+      } else {
+        const delayMin = Math.min(Math.pow(2, newAttempts), 60);
+        const nextAttempt = new Date(Date.now() + delayMin * 60 * 1000).toISOString();
+        await supabase
+          .from("notification_outbox")
+          .update({ attempts: newAttempts, next_attempt_at: nextAttempt })
+          .eq("id", item.id);
+      }
+    }
+  }
+  return sentCount;
 }
 
 Deno.serve(async (req: Request) => {
@@ -398,6 +486,14 @@ Deno.serve(async (req: Request) => {
 
     for (const city of cities) {
       try {
+        // Count previous queues for health validation.
+        const { count: prevQueueCount } = await supabase
+          .from("schedule_snapshots")
+          .select("queue", { count: "exact", head: true })
+          .eq("oblast_slug", city.oblast_slug)
+          .eq("city_slug", city.city_slug)
+          .in("schedule_date", [todayDate, tomorrowDate]);
+
         let todaySchedules: QueueSchedule[] = [];
         let tomorrowSchedules: QueueSchedule[] = [];
         let todayOk = false;
@@ -409,13 +505,13 @@ Deno.serve(async (req: Request) => {
           todaySchedules = t.schedules; todayOk = t.ok;
           tomorrowSchedules = tm.schedules; tomorrowOk = tm.ok;
         } else {
-          const t = await fetchBezsvitlaSchedule(city.oblast_slug, city.city_slug, false);
-          const tm = await fetchBezsvitlaSchedule(city.oblast_slug, city.city_slug, true);
+          const t = await fetchBezsvitlaSchedule(city.oblast_slug, city.city_slug, false, prevQueueCount ?? 0);
+          const tm = await fetchBezsvitlaSchedule(city.oblast_slug, city.city_slug, true, prevQueueCount ?? 0);
           todaySchedules = t.schedules; todayOk = t.ok;
           tomorrowSchedules = tm.schedules; tomorrowOk = tm.ok;
         }
 
-        const dayData = [
+        const dayData: DaySchedule[] = [
           { date: todayDate, label: "today", schedules: todaySchedules, sourceOk: todayOk },
           { date: tomorrowDate, label: "tomorrow", schedules: tomorrowSchedules, sourceOk: tomorrowOk },
         ];
@@ -428,12 +524,24 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Process the notification outbox: send pending notifications.
+    const sentCount = await processOutbox();
+
+    // Clean up old change log rows and sent outbox entries.
     await supabase
       .from("schedule_change_log")
       .delete()
       .lt("detected_at", new Date(Date.now() - RETENTION_DAYS * 24 * 3600 * 1000).toISOString());
 
-    return new Response(JSON.stringify({ ok: true, checked: checked.length, totalChanges, checked }), {
+    await supabase
+      .from("notification_outbox")
+      .delete()
+      .eq("status", "sent")
+      .lt("sent_at", new Date(Date.now() - RETENTION_DAYS * 24 * 3600 * 1000).toISOString());
+
+    return new Response(JSON.stringify({
+      ok: true, checked: checked.length, totalChanges, notificationsSent: sentCount, checked,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

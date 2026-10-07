@@ -82,7 +82,25 @@ Deno.serve(async (req: Request) => {
         .eq("tg_user_id", user.id)
         .maybeSingle();
       if (error) throw error;
-      return new Response(JSON.stringify({ prefs: data ?? null }), {
+
+      // Also fetch per-city seen state for the user's current city.
+      const prefs = data as { oblast_slug: string | null; city_slug: string | null } | null;
+      let citySeenAt: string | null = null;
+      if (prefs?.oblast_slug && prefs?.city_slug) {
+        const { data: viewRow } = await supabase
+          .from("user_change_views")
+          .select("last_seen_at")
+          .eq("tg_user_id", user.id)
+          .eq("oblast_slug", prefs.oblast_slug)
+          .eq("city_slug", prefs.city_slug)
+          .maybeSingle();
+        citySeenAt = (viewRow as { last_seen_at: string } | null)?.last_seen_at ?? null;
+      }
+
+      return new Response(JSON.stringify({
+        prefs: data ?? null,
+        city_seen_at: citySeenAt,
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -109,6 +127,22 @@ Deno.serve(async (req: Request) => {
         clean.queue_group = patch.queue_group;
       }
       if (bodyObj?.markChangesSeen) {
+        // Write per-city seen state to user_change_views so switching cities
+        // doesn't leak the seen-state from one city to another.
+        const oblast = typeof patch.oblast_slug === "string" ? patch.oblast_slug : null;
+        const city = typeof patch.city_slug === "string" ? patch.city_slug : null;
+        if (oblast && city) {
+          const seenAt = new Date().toISOString();
+          await supabase
+            .from("user_change_views")
+            .upsert({
+              tg_user_id: user.id,
+              oblast_slug: oblast,
+              city_slug: city,
+              last_seen_at: seenAt,
+            }, { onConflict: "tg_user_id,oblast_slug,city_slug" });
+        }
+        // Still update the legacy column for backwards compatibility.
         clean.last_seen_changes_at = new Date().toISOString();
       }
 
