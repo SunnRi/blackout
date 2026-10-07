@@ -4,9 +4,9 @@ import {
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, AlertTriangle, Clock, Info, X,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
-  LayoutGrid, Gauge, Layers, Eye,
+  LayoutGrid, Gauge, Layers, Eye, History,
 } from 'lucide-react';
-import { supabase, type UserPreferences } from '@/lib/supabase';
+import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
 import {
   initTelegramWebApp, getTelegramUser, hapticImpact, hapticNotification,
@@ -655,8 +655,115 @@ function Onboarding({
   );
 }
 
+// ── Change history ────────────────────────────────────────────
+type ChangeGroup = {
+  detectedAt: string;
+  items: { queue: string; day: string; changeType: string; summary: string }[];
+};
+
+function formatChangeTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000);
+  if (diffMin < 1) return 'щойно';
+  if (diffMin < 60) return `${diffMin} хв тому`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH} год тому`;
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${day}.${month} ${hh}:${mm}`;
+}
+
+function formatDayLabel(day: string): string {
+  return day === 'today' ? 'сьогодні' : 'завтра';
+}
+
+function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug: string }) {
+  const [groups, setGroups] = useState<ChangeGroup[] | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    setGroups(null); setError(false);
+    supabase
+      .from('schedule_change_log')
+      .select('id, queue, day, change_type, summary, detected_at')
+      .eq('oblast_slug', oblastSlug)
+      .eq('city_slug', citySlug)
+      .order('detected_at', { ascending: false })
+      .limit(100)
+      .then(({ data, error: err }) => {
+        if (err) { setError(true); setGroups([]); return; }
+        const byTime = new Map<string, ChangeGroup>();
+        for (const r of (data ?? []) as ScheduleChange[]) {
+          let g = byTime.get(r.detected_at);
+          if (!g) { g = { detectedAt: r.detected_at, items: [] }; byTime.set(r.detected_at, g); }
+          g.items.push({ queue: r.queue, day: r.day, changeType: r.change_type, summary: r.summary });
+        }
+        setGroups([...byTime.values()]);
+      });
+  }, [oblastSlug, citySlug]);
+
+  if (groups === null) {
+    return (
+      <div className="flex items-center justify-center py-12 text-secondary-c">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Завантаження історії...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="d-card py-10 text-center">
+        <History className="mx-auto mb-2 h-10 w-10 text-muted-c" />
+        <p className="text-sm text-secondary-c">Не вдалося завантажити історію</p>
+      </div>
+    );
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div className="d-card py-10 text-center fade-in">
+        <History className="mx-auto mb-2 h-10 w-10 text-muted-c" />
+        <p className="text-sm font-semibold text-primary-c">Змін ще не було</p>
+        <p className="mx-auto mt-1 max-w-xs text-xs text-secondary-c">
+          Графік для вашого міста стабільний. Ми перевіряємо оновлення кожні 30 хвилин — і тут з'явиться, що саме змінилося.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {groups.map((g) => (
+        <div key={g.detectedAt} className="d-card px-3.5 py-3 fade-in">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg">
+              <RefreshCw className="h-3 w-3 accent-c" />
+            </span>
+            <span className="text-xs font-bold text-primary-c">{formatChangeTime(g.detectedAt)}</span>
+          </div>
+          <div className="space-y-1.5">
+            {g.items.map((it, i) => (
+              <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
+                  <span className="text-[10px] text-muted-c">{formatDayLabel(it.day)}</span>
+                  {it.changeType === 'initial' && <span className="text-[10px] text-muted-c">· перший знімок</span>}
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────
-type View = 'schedule' | 'settings';
+type View = 'schedule' | 'changes' | 'settings';
 type DayTab = 'today' | 'tomorrow';
 
 function App() {
@@ -864,15 +971,15 @@ function App() {
               </div>
               <div>
                 <h1 className="text-lg font-bold leading-tight text-primary-c">
-                  {view === 'schedule' ? 'Графік світла' : 'Налаштування'}
+                  {view === 'schedule' ? 'Графік світла' : view === 'changes' ? 'Оновлення графіка' : 'Налаштування'}
                 </h1>
-                {selectedCity && view === 'schedule' ? (
+                {selectedCity && view !== 'settings' ? (
                   <button onClick={() => { setView('settings'); hapticImpact('light'); }}
                     className="flex items-center gap-1 text-xs accent-c">
                     <MapPin className="h-3 w-3" />
                     {selectedCity.name}{selectedGroup && ` · ${selectedGroup}`}
                   </button>
-                ) : !selectedCity && view === 'schedule' ? (
+                ) : !selectedCity && view !== 'settings' ? (
                   <p className="text-xs text-secondary-c">Україна</p>
                 ) : null}
               </div>
@@ -905,6 +1012,13 @@ function App() {
                   {density === 'minimal' && <Gauge className="h-4 w-4 accent-c" />}
                   {density === 'standard' && <LayoutGrid className="h-4 w-4 accent-c" />}
                   {density === 'extended' && <Layers className="h-4 w-4 accent-c" />}
+                </button>
+              )}
+              {view === 'schedule' && selectedCity && (
+                <button onClick={() => { setView('changes'); hapticImpact('light'); }}
+                  className="d-btn flex h-9 w-9 items-center justify-center rounded-full"
+                  aria-label="Оновлення графіка" title="Оновлення графіка">
+                  <History className="h-4 w-4 accent-c" />
                 </button>
               )}
               {view === 'schedule' && (
@@ -959,7 +1073,7 @@ function App() {
                 {/* Auto-refresh info */}
                 <div className="mb-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-c">
                   <RefreshCw className="h-3 w-3" />
-                  <span>Графіки оновлюються автоматично кожні 30 хв</span>
+                  <span>Перевіряємо оновлення кожні 30 хв</span>
                 </div>
 
                 {/* Status by density */}
@@ -1019,6 +1133,23 @@ function App() {
               </>
             )}
           </>
+        )}
+
+        {/* ── CHANGES VIEW ── */}
+        {view === 'changes' && selectedOblast && selectedCity && (
+          <div className="fade-in">
+            <p className="mb-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-c">
+              <RefreshCw className="h-3 w-3" />
+              <span>Перевіряємо оновлення кожні 30 хв · {selectedCity.name}</span>
+            </p>
+            <ChangeHistory oblastSlug={selectedOblast.slug} citySlug={selectedCity.slug} />
+            <button
+              onClick={() => { setView('schedule'); hapticImpact('light'); }}
+              className="d-btn mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-secondary-c transition-all hover:scale-[1.01]"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> До графіка
+            </button>
+          </div>
         )}
 
         {/* ── SETTINGS VIEW ── */}

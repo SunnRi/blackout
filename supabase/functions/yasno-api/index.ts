@@ -121,29 +121,93 @@ async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs =
 }
 
 // ── bezsvitla helpers ─────────────────────────────────────────
-async function fetchBezsvitlaCities(oblastSlug: string): Promise<{ slug: string; name: string }[]> {
-  const resp = await fetchWithTimeout(`${BEZSVITLA_BASE}/${oblastSlug}`, {
+type Settlement = { slug: string; name: string };
+
+// Settlement sitemap lists every populated place (cities, towns, villages)
+// with clean display names; nested path = <oblast>/<hromada>/<settlement>.
+// Districts, hromadas and queue pages live in separate sitemaps — excluded.
+const SETTLEMENTS_SITEMAP = "https://bezsvitla.com.ua/sitemap-settlements.xml";
+const HROMADAS_SITEMAP = "https://bezsvitla.com.ua/sitemap-hromadas.xml";
+
+let settlementsCache: { at: number; data: Map<string, Settlement[]> } | null = null;
+const SETTLEMENTS_TTL = 30 * 60 * 1000;
+
+function slugFromLoc(loc: string): string {
+  const parts = loc.replace(/\/$/, "").split("/");
+  return parts.slice(3).join("/");
+}
+
+// Display names of hromadas, keyed by slug — used to disambiguate villages
+// with identical names ("Андріївка (Баришівська громада)").
+async function fetchHromadaNames(): Promise<Map<string, string>> {
+  const resp = await fetchWithTimeout(HROMADAS_SITEMAP, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" },
   });
-  if (!resp.ok) return [];
-
-  const html = await resp.text();
-  const cities: { slug: string; name: string }[] = [];
-  const seen = new Set<string>();
-
-  // City cards link to /<oblast>/<city>; exclude date links like /grafik-na-2026-10-08
-  const cardPattern = new RegExp(
-    `<a[^>]*href="/${oblastSlug}/([a-z0-9-]+)"[^>]*>(.*?)</a>`,
-    "gs",
-  );
-  for (const m of html.matchAll(cardPattern)) {
-    const slug = m[1];
-    if (seen.has(slug) || slug.startsWith("grafik")) continue;
-    seen.add(slug);
-    const name = m[2].replace(/<[^>]+>/g, "").trim();
-    if (name && name.length > 1 && !/(графік|черга)/i.test(name)) cities.push({ slug, name });
+  const names = new Map<string, string>();
+  if (!resp.ok) return names;
+  const xml = await resp.text();
+  for (const m of xml.matchAll(/<loc>https:\/\/bezsvitla\.com\.ua\/([^<]+)<\/loc>[\s\S]*?<image:title>([^<]+)<\/image:title>/g)) {
+    const path = m[1];
+    if (path.split("/").length !== 2) continue; // only top-level hromada pages
+    const name = m[2].split("—").pop()!.trim();
+    if (name) names.set(path, name);
   }
-  return cities;
+  return names;
+}
+
+async function fetchAllSettlements(): Promise<Map<string, Settlement[]>> {
+  if (settlementsCache && Date.now() - settlementsCache.at < SETTLEMENTS_TTL) {
+    return settlementsCache.data;
+  }
+  const resp = await fetchWithTimeout(SETTLEMENTS_SITEMAP, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; PowerBot/1.0)" },
+  });
+  if (!resp.ok) throw new Error(`Settlements sitemap ${resp.status}`);
+  const xml = await resp.text();
+  const hromadaNames = await fetchHromadaNames();
+
+  const byOblast = new Map<string, Settlement[]>();
+  // Count name occurrences per oblast to disambiguate duplicates
+  const dupes = new Map<string, number>();
+  const raw: { oblast: string; slug: string; name: string; hromada: string }[] = [];
+  const entryRe = /<url>([\s\S]*?)<\/url>/gi;
+  for (const m of xml.matchAll(entryRe)) {
+    const block = m[1];
+    const loc = block.match(/<loc>([^<]+)<\/loc>/)?.[1];
+    const title = block.match(/<image:title>([^<]+)<\/image:title>/)?.[1];
+    if (!loc || !title) continue;
+    const path = loc.replace("https://bezsvitla.com.ua/", "");
+    const parts = path.split("/");
+    if (parts.length < 2) continue;
+    const oblast = parts[0];
+    if (oblast === "kyiv-city") continue; // capital handled via Yasno
+    const name = title.split("—").pop()!.trim();
+    // Strip type prefixes: "с. ", "с-ще ", "смт ", "м. "
+    const clean = name.replace(/^(с|смт|с-ще|м|м-т|т)\.\s*/u, "").trim();
+    if (!clean) continue;
+    const hromadaSlug = parts.length >= 3 ? `${oblast}/${parts[1]}` : "";
+    const hromadaName = hromadaSlug ? hromadaNames.get(hromadaSlug) ?? "" : "";
+    const dupeKey = `${oblast}|${clean}`;
+    dupes.set(dupeKey, (dupes.get(dupeKey) ?? 0) + 1);
+    raw.push({ oblast, slug: parts.slice(1).join("/"), name: clean, hromada: hromadaName });
+  }
+  for (const r of raw) {
+    const isDupe = (dupes.get(`${r.oblast}|${r.name}`) ?? 0) > 1;
+    const label = isDupe && r.hromada ? `${r.name} (${r.hromada})` : r.name;
+    const arr = byOblast.get(r.oblast) ?? [];
+    arr.push({ slug: r.slug, name: label });
+    byOblast.set(r.oblast, arr);
+  }
+  for (const arr of byOblast.values()) {
+    arr.sort((a, b) => a.name.localeCompare(b.name, "uk"));
+  }
+  settlementsCache = { at: Date.now(), data: byOblast };
+  return byOblast;
+}
+
+async function fetchBezsvitlaCities(oblastSlug: string): Promise<{ slug: string; name: string }[]> {
+  const all = await fetchAllSettlements();
+  return all.get(oblastSlug) ?? [];
 }
 
 async function fetchBezsvitlaSchedule(

@@ -15,3 +15,12 @@ export type UserPreferences = {
   city_slug: string | null;
   queue_group: string | null;
 };
+
+export type ScheduleChange = {
+  id: string;
+  queue: string;
+  day: string;
+  change_type: string;
+  summary: string;
+  detected_at: string;
+};

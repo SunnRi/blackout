@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.notification-checker]
 verify_jwt = false
+
+[functions.schedule-change-checker]
+verify_jwt = false
