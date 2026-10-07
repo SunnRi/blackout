@@ -131,14 +131,14 @@ async function fetchBezsvitlaCities(oblastSlug: string): Promise<{ slug: string;
   const cities: { slug: string; name: string }[] = [];
   const seen = new Set<string>();
 
-  // City cards link to /<oblast>/<city>
+  // City cards link to /<oblast>/<city>; exclude date links like /grafik-na-2026-10-08
   const cardPattern = new RegExp(
     `<a[^>]*href="/${oblastSlug}/([a-z0-9-]+)"[^>]*>(.*?)</a>`,
     "gs",
   );
   for (const m of html.matchAll(cardPattern)) {
     const slug = m[1];
-    if (slug === "grafik-na-zavtra" || seen.has(slug)) continue;
+    if (seen.has(slug) || slug.startsWith("grafik")) continue;
     seen.add(slug);
     const name = m[2].replace(/<[^>]+>/g, "").trim();
     if (name && name.length > 1) cities.push({ slug, name });

@@ -565,19 +565,19 @@ function Onboarding({
           {step === 1 && (
             <div className="flex flex-1 flex-col fade-in-right">
               <h2 className="text-2xl font-extrabold text-primary-c">Ваша область</h2>
-              <p className="mb-4 mt-1 text-sm text-secondary-c">Оберіть область або місто Київ</p>
-              <div className="d-panel space-y-1 rounded-2xl p-2">
+              <p className="mb-3 mt-1 text-sm text-secondary-c">Оберіть область або місто Київ</p>
+              <div className="d-panel scroll-touch space-y-0.5 overflow-y-auto overscroll-contain rounded-2xl p-1.5" style={{ height: 'min(320px, 42vh)', WebkitOverflowScrolling: 'touch' }}>
                 {oblasts.map((oblast) => (
                   <button
                     key={oblast.slug}
                     onClick={() => { setSelectedOblast(oblast); hapticImpact('light'); }}
-                    className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-all ${
-                      selectedOblast?.slug === oblast.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
+                    className={`flex w-full shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
+                      selectedOblast?.slug === oblast.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c active:bg-black/5 dark:active:bg-white/5'
                     }`}
                   >
-                    <MapPin className="h-4 w-4 shrink-0" />
-                    {oblast.name}
-                    {selectedOblast?.slug === oblast.slug && <Check className="ml-auto h-4 w-4" />}
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{oblast.name}</span>
+                    {selectedOblast?.slug === oblast.slug && <Check className="ml-auto h-4 w-4 shrink-0" />}
                   </button>
                 ))}
                 {oblasts.length === 0 && <p className="py-6 text-center text-sm text-muted-c">Не вдалося завантажити</p>}
@@ -588,16 +588,16 @@ function Onboarding({
           {step === 2 && (
             <div className="flex flex-1 flex-col fade-in-right">
               <h2 className="text-2xl font-extrabold text-primary-c">Ваше місто</h2>
-              <p className="mb-4 mt-1 text-sm text-secondary-c">Оберіть місто, щоб ми показали правильний графік</p>
-              <div className="relative mb-3">
+              <p className="mb-3 mt-1 text-sm text-secondary-c">Оберіть місто, щоб ми показали правильний графік</p>
+              <div className="relative mb-2">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
                 <input
                   type="text" value={citySearch} onChange={(e) => setCitySearch(e.target.value)}
                   placeholder="Пошук міста..."
-                  className="d-panel w-full rounded-xl py-3 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="d-panel w-full rounded-xl py-2.5 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
-              <div className="d-panel max-h-72 flex-1 space-y-1 overflow-y-auto rounded-2xl p-2">
+              <div className="d-panel scroll-touch space-y-0.5 overflow-y-auto overscroll-contain rounded-2xl p-1.5" style={{ height: 'min(320px, 42vh)', WebkitOverflowScrolling: 'touch' }}>
                 {citiesLoading ? (
                   <div className="flex items-center justify-center py-8 text-secondary-c">
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Завантаження міст...
@@ -608,13 +608,13 @@ function Onboarding({
                       <button
                         key={city.slug}
                         onClick={() => { setSelectedCity(city); setSelectedGroup(''); hapticImpact('light'); }}
-                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-all ${
-                          selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
+                        className={`flex w-full shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
+                          selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c active:bg-black/5 dark:active:bg-white/5'
                         }`}
                       >
-                        <MapPin className="h-4 w-4 shrink-0" />
-                        {city.name}
-                        {selectedCity?.slug === city.slug && <Check className="ml-auto h-4 w-4" />}
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{city.name}</span>
+                        {selectedCity?.slug === city.slug && <Check className="ml-auto h-4 w-4 shrink-0" />}
                       </button>
                     ))}
                     {filtered.length === 0 && <p className="py-6 text-center text-sm text-muted-c">Не знайдено</p>}
@@ -1073,7 +1073,7 @@ function App() {
                   className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
-              <div className="d-panel max-h-44 space-y-0.5 overflow-y-auto rounded-2xl p-1">
+              <div className="d-panel scroll-touch space-y-0.5 overflow-y-auto overscroll-contain rounded-2xl p-1.5" style={{ height: 'min(260px, 38vh)', WebkitOverflowScrolling: 'touch' }}>
                 {!selectedOblast ? (
                   <p className="py-3 text-center text-xs text-muted-c">Спочатку оберіть область</p>
                 ) : citiesLoading ? (
@@ -1084,12 +1084,13 @@ function App() {
                       <button
                         key={city.slug}
                         onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
-                        className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-all ${
-                          selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
+                        className={`flex w-full shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
+                          selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c active:bg-black/5 dark:active:bg-white/5'
                         }`}
                       >
                         <MapPin className="h-3.5 w-3.5 shrink-0" />
-                        {city.name}
+                        <span className="truncate">{city.name}</span>
+                        {selectedCity?.slug === city.slug && <Check className="ml-auto h-4 w-4 shrink-0" />}
                       </button>
                     ))}
                     {filteredSettingsCities.length === 0 && <p className="py-3 text-center text-xs text-muted-c">Не знайдено</p>}
