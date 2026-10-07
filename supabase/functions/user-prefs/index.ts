@@ -150,7 +150,32 @@ Deno.serve(async (req: Request) => {
         .from("user_preferences")
         .upsert({ tg_user_id: user.id, ...clean }, { onConflict: "tg_user_id" });
       if (error) throw error;
-      return new Response(JSON.stringify({ ok: true }), {
+
+      // Return the current prefs so the app can restore city/queue after
+      // a reload. Also fetch per-city seen state for the user's current city.
+      const { data: fresh } = await supabase
+        .from("user_preferences")
+        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at")
+        .eq("tg_user_id", user.id)
+        .maybeSingle();
+      const freshPrefs = fresh as { oblast_slug: string | null; city_slug: string | null } | null;
+      let citySeenAt: string | null = null;
+      if (freshPrefs?.oblast_slug && freshPrefs?.city_slug) {
+        const { data: viewRow } = await supabase
+          .from("user_change_views")
+          .select("last_seen_at")
+          .eq("tg_user_id", user.id)
+          .eq("oblast_slug", freshPrefs.oblast_slug)
+          .eq("city_slug", freshPrefs.city_slug)
+          .maybeSingle();
+        citySeenAt = (viewRow as { last_seen_at: string } | null)?.last_seen_at ?? null;
+      }
+
+      return new Response(JSON.stringify({
+        ok: true,
+        prefs: fresh ?? null,
+        city_seen_at: citySeenAt,
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
