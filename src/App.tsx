@@ -3,7 +3,7 @@ import {
   Zap, ZapOff, MapPin, Loader2, CheckCircle2,
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, AlertTriangle, Clock, Info, X,
-  Sparkles, ArrowRight, ArrowLeft, Check, Smartphone, Palette,
+  Sparkles, ArrowRight, ArrowLeft, Check, Boxes, Cloud, Palette,
   LayoutGrid, Gauge, Layers, Eye,
 } from 'lucide-react';
 import { supabase, type UserPreferences } from '@/lib/supabase';
@@ -100,7 +100,7 @@ function getHourStatus(sorted: Slot[], hour: number): 'on' | 'off' | 'partial' {
 
 // ── Theme / Design / Density types ────────────────────────────
 type ThemeMode = 'auto' | 'light' | 'dark';
-type Design = 'glass' | 'classic' | 'neon';
+type Design = 'glass' | 'brutal' | 'clay';
 type Density = 'minimal' | 'standard' | 'extended';
 
 const DENSITY_OPTIONS: { id: Density; name: string; desc: string; icon: typeof Gauge }[] = [
@@ -111,8 +111,8 @@ const DENSITY_OPTIONS: { id: Density; name: string; desc: string; icon: typeof G
 
 const DESIGN_OPTIONS: { id: Design; name: string; desc: string; icon: typeof Palette }[] = [
   { id: 'glass', name: 'Liquid Glass', desc: 'Скло, розмиття, живе тло — як iOS 26', icon: Sparkles },
-  { id: 'classic', name: 'Класика', desc: 'Чисті картки, спокійний вигляд', icon: Smartphone },
-  { id: 'neon', name: 'Неон', desc: 'Напівпрозорі панелі з яскравим контуром', icon: Zap },
+  { id: 'brutal', name: 'Необруталізм', desc: 'Жирні рамки, контраст, характер', icon: Boxes },
+  { id: 'clay', name: 'Клей', desc: 'М’які пастельні 3D-панелі', icon: Cloud },
 ];
 
 function getInitialThemeMode(): ThemeMode {
@@ -794,7 +794,7 @@ function App() {
 
   if (!onboarded) {
     return (
-      <div className={design === 'glass' ? 'design-glass' : design === 'neon' ? 'design-neon' : 'design-classic'}>
+      <div className={design === 'brutal' ? 'design-brutal' : design === 'clay' ? 'design-clay' : 'design-glass'}>
         <Onboarding
           step={obStep} setStep={setObStep}
           cities={cities}
@@ -808,7 +808,7 @@ function App() {
   }
 
   const isExtended = density === 'extended';
-  const designClass = design === 'glass' ? 'design-glass' : design === 'neon' ? 'design-neon' : 'design-classic';
+  const designClass = design === 'brutal' ? 'design-brutal' : design === 'clay' ? 'design-clay' : 'design-glass';
 
   return (
     <div className={`${designClass} min-h-screen bg-primary-c`} style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
