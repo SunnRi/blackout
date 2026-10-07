@@ -262,7 +262,6 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
   const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
   const sorted = useMemo(() => [...slots].sort((a, b) => a.start - b.start), [slots]);
   const relUpdate = getRelativeUpdate(updated);
-
   return (
     <div className="fade-in-delay-2">
       <div className="mb-2 flex items-center justify-between">
@@ -283,8 +282,7 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
         )}
       </div>
 
-      <div className="d-card p-3">
-        <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(24, 1fr)' }}>
+      <div className="d-card p-3">        <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(24, 1fr)' }}>
           {Array.from({ length: 24 }, (_, hour) => {
             const status = getHourStatus(sorted, hour);
             const isCurrent = isToday && currentMin >= hour * 60 && currentMin < (hour + 1) * 60;
@@ -337,11 +335,10 @@ function HourlyGraph({ slots, now, isToday, updated, showStats }: {
         )}
       </div>
 
-      {relUpdate && (
+      {updated && (
         <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-c">
           <Info className="h-3 w-3 shrink-0" />
-          Графік оновлено: <span className="font-medium text-secondary-c">{relUpdate}</span>
-          {updated && ` · ${updated}`}
+          <span>Графік оновлено · останні зміни: {updated}</span>
         </p>
       )}
     </div>
@@ -927,7 +924,7 @@ function App() {
           selectedCity={selectedCity} setSelectedCity={setSelectedCity}
           selectedGroup={selectedGroup} setSelectedGroup={setSelectedGroup}
           scheduleLoading={scheduleLoading} citiesLoading={citiesLoading} availableGroups={availableGroups}
-          onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); }}
+          onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); setView('schedule'); }}
         />
       </div>
     );
