@@ -843,7 +843,12 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
               </p>
             ))}
             {removed.map((s, i) => (
-              <p key={`r${i}`} className="text-xs text-muted-c line-through" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <p
+                key={`r${i}`}
+                className="flex items-center gap-1 text-xs text-muted-c line-through"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[10px] font-bold not-italic" style={{ color: 'var(--on-positive)' }}>−</span>
                 Відключення {fmtRange(s)}
               </p>
             ))}
@@ -862,9 +867,14 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
               </p>
             ))}
             {added.map((s, i) => (
-              <p key={`a${i}`} className="text-xs font-bold" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--on-negative)' }}>
+              <span
+                key={`a${i}`}
+                className="flex items-center gap-1.5 rounded-lg bg-red-500/12 px-2 py-1 text-xs font-bold"
+                style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--on-negative)' }}
+              >
+                <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-[10px] font-bold">+</span>
                 Відключення {fmtRange(s)}
-              </p>
+              </span>
             ))}
           </div>
         )}
