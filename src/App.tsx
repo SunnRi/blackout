@@ -4,7 +4,7 @@ import {
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, Clock, Info, X,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
-  LayoutGrid, Gauge, Layers, Eye, History, ArrowDown,
+  LayoutGrid, Gauge, Layers, Eye, History,
 } from 'lucide-react';
 import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -799,15 +799,11 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
     );
   }
 
-  const Row = ({ label, tone, children }: { label: string; tone: 'was' | 'now'; children: React.ReactNode }) => (
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div className="flex items-start gap-2.5">
       <span
         className="mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-        style={
-          tone === 'was'
-            ? { background: 'rgba(120,120,128,0.12)', color: 'var(--text-muted, #8e8e93)' }
-            : { background: 'color-mix(in srgb, var(--on-negative) 14%, transparent)', color: 'var(--on-negative)' }
-        }
+        style={{ background: 'rgba(120,120,128,0.12)', color: 'var(--text-muted, #8e8e93)' }}
       >
         {label}
       </span>
@@ -817,7 +813,7 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
 
   return (
     <div className="mt-2 space-y-2.5 rounded-xl bg-black/4 px-3 py-2.5 dark:bg-white/6">
-      <Row label="Було" tone="was">
+      <Row label="Було">
         {oldOff.length === 0 ? (
           <p className="text-xs text-secondary-c">Світло буде весь день</p>
         ) : (
@@ -836,7 +832,7 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
         )}
       </Row>
 
-      <Row label="Стало" tone="now">
+      <Row label="Стало">
         {newOff.length === 0 ? (
           <p className="text-xs font-semibold" style={{ color: 'var(--on-positive)' }}>Світло буде весь день — відключень немає</p>
         ) : (
@@ -854,23 +850,6 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
           </div>
         )}
       </Row>
-
-      {removed.length > 0 && (
-        <p className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--on-positive)' }}>
-          <span className="flex h-4 w-4 items-center justify-center rounded-full" style={{ background: 'color-mix(in srgb, var(--on-positive) 16%, transparent)' }}>
-            <ArrowDown className="h-3 w-3 rotate-180" style={{ color: 'var(--on-positive)' }} />
-          </span>
-          Відключення {removed.map(fmtRange).join(', ')} скасовано — світло буде
-        </p>
-      )}
-      {added.length > 0 && (
-        <p className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--on-negative)' }}>
-          <span className="flex h-4 w-4 items-center justify-center rounded-full" style={{ background: 'color-mix(in srgb, var(--on-negative) 16%, transparent)' }}>
-            <ArrowDown className="h-3 w-3" style={{ color: 'var(--on-negative)' }} />
-          </span>
-          Додали відключення {added.map(fmtRange).join(', ')}
-        </p>
-      )}
     </div>
   );
 }
