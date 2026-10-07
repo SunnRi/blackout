@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Zap, ZapOff, MapPin, Loader2, CheckCircle2,
   Bell, BellOff, ChevronLeft, Search, Settings,
-  Sun, Moon, AlertTriangle, Navigation, Clock,
-  Info, LayoutGrid, Rows3, Gauge, X,
+  Sun, Moon, AlertTriangle, Clock, Info, X,
+  Palette, Sparkles, ArrowRight, ArrowLeft, Check, Smartphone,
+  LayoutGrid, Gauge, Radio,
 } from 'lucide-react';
 import { supabase, type UserPreferences } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -17,44 +18,7 @@ import {
 
 const ALL_GROUPS = ['1.1','1.2','2.1','2.2','3.1','3.2','4.1','4.2','5.1','5.2','6.1','6.2'];
 
-const CITY_COORDS: Record<string, { lat: number; lon: number }> = {
-  kyiv:        { lat: 50.4501, lon: 30.5234 },
-  berezan:     { lat: 50.3160, lon: 31.4750 },
-  'bila-tserkva': { lat: 49.7968, lon: 30.1188 },
-  bohuslav:    { lat: 49.0900, lon: 30.8150 },
-  boryspil:    { lat: 50.3530, lon: 30.9530 },
-  boyarka:     { lat: 50.3290, lon: 30.3010 },
-  brovary:     { lat: 50.5110, lon: 30.7870 },
-  bucha:       { lat: 50.5480, lon: 30.2130 },
-  vasylkiv:    { lat: 50.1840, lon: 30.3200 },
-  vyshhorod:   { lat: 50.5840, lon: 30.4730 },
-  vyshneve:    { lat: 50.3860, lon: 30.3760 },
-  irpin:       { lat: 50.5220, lon: 30.2500 },
-  kaharlyk:    { lat: 49.9550, lon: 30.9600 },
-  myronivka:   { lat: 49.5430, lon: 30.8700 },
-  obukhiv:     { lat: 50.1220, lon: 30.6350 },
-  pereiaslav:  { lat: 50.0770, lon: 31.4520 },
-  ruzhyn:      { lat: 49.4470, lon: 28.6950 },
-  slavutych:   { lat: 51.5200, lon: 30.4500 },
-  tetiiv:      { lat: 49.7300, lon: 30.0500 },
-  uzyn:        { lat: 49.8330, lon: 30.3000 },
-  fastiv:      { lat: 50.0760, lon: 29.8840 },
-  yahotyn:     { lat: 50.2810, lon: 31.7830 },
-};
-
-function findNearestCity(lat: number, lon: number, cities: City[]): City | null {
-  let nearest: City | null = null;
-  let minDist = Infinity;
-  for (const city of cities) {
-    const coords = CITY_COORDS[city.slug];
-    if (!coords) continue;
-    const dist = Math.hypot(coords.lat - lat, coords.lon - lon);
-    if (dist < minDist) { minDist = dist; nearest = city; }
-  }
-  if (minDist > 0.8) return null;
-  return nearest;
-}
-
+// ── Helpers ───────────────────────────────────────────────────
 function slotDuration(slot: Slot): string {
   const mins = slot.end - slot.start;
   const h = Math.floor(mins / 60);
@@ -112,9 +76,24 @@ function getRelativeUpdate(updated: string | null): string | null {
   return `${days} дн тому`;
 }
 
-// ── Theme + Display Mode ──────────────────────────────────────
+function greeting(): string {
+  const h = getKyivTime().hours;
+  if (h < 6) return 'Доброї ночі';
+  if (h < 12) return 'Доброго ранку';
+  if (h < 18) return 'Доброго дня';
+  return 'Доброго вечора';
+}
+
+// ── Theme + Display Style ─────────────────────────────────────
 type Theme = 'light' | 'dark';
-type DisplayMode = 'compact' | 'comfortable' | 'minimal';
+type DisplayStyle = 'ios' | 'compact' | 'minimal' | 'neon';
+
+const STYLE_OPTIONS: { id: DisplayStyle; name: string; desc: string; icon: typeof LayoutGrid }[] = [
+  { id: 'ios', name: 'iOS', desc: 'Класичний стиль Apple: великі картки, деталі', icon: Smartphone },
+  { id: 'compact', name: 'Компактний', desc: 'Стиснуто, але з графіком і деталями', icon: LayoutGrid },
+  { id: 'minimal', name: 'Мінімальний', desc: 'Максимум корисного — мінімум зайвого', icon: Gauge },
+  { id: 'neon', name: 'Неон', desc: 'Темний стиль зі світними акцентами', icon: Radio },
+];
 
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
@@ -124,12 +103,61 @@ function getInitialTheme(): Theme {
   return 'dark';
 }
 
-function getInitialDisplayMode(): DisplayMode {
-  if (typeof window === 'undefined') return 'comfortable';
-  return (localStorage.getItem('displayMode') as DisplayMode) || 'comfortable';
+function getInitialStyle(): DisplayStyle {
+  if (typeof window === 'undefined') return 'ios';
+  return (localStorage.getItem('displayStyle') as DisplayStyle) || 'ios';
 }
 
-// ── Compact Status Pill ───────────────────────────────────────
+// ── Status components ─────────────────────────────────────────
+function StatusHero({ slots, now }: { slots: Slot[]; now: KyivTime }) {
+  const current = getCurrentSlot(slots, now);
+  const isOff = current?.type === 'Definite';
+  const nextOutage = getNextOutageSlot(slots, now);
+  const nextOn = getNextOnSlot(slots, now);
+
+  return (
+    <div className={`fade-in-scale apple-card p-5 text-center ${isOff ? 'pulse-red' : 'pulse-green'}`}>
+      <div className={`mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full ${
+        isOff ? 'bg-red-500/12' : 'bg-emerald-500/12'
+      }`}>
+        {isOff
+          ? <ZapOff className="h-8 w-8" style={{ color: 'var(--on-negative)' }} />
+          : <Zap className="h-8 w-8" style={{ color: 'var(--on-positive)' }} />}
+      </div>
+      <h2 className="text-xl font-bold text-primary-c">
+        {isOff ? 'Світла зараз немає' : 'Світло зараз є'}
+      </h2>
+      {current && (
+        <p className="mt-0.5 text-sm text-secondary-c">
+          {isOff ? 'Відключення' : 'Живлення'}:{' '}
+          <span className="font-semibold text-primary-c">
+            {minutesToTime(current.start)} — {minutesToTime(current.end)}
+          </span>
+        </p>
+      )}
+      <div className="mt-3 flex flex-col gap-1.5">
+        {isOff && nextOn && (
+          <div className="rounded-xl bg-emerald-500/8 px-3 py-2">
+            <span className="text-sm" style={{ color: 'var(--on-positive)' }}>
+              Увімкнуть о <b className="text-primary-c">{minutesToTime(nextOn.slot.start)}</b> · через {formatCountdown(nextOn.minutesUntil)}
+            </span>
+          </div>
+        )}
+        {!isOff && nextOutage && (
+          <div className="rounded-xl bg-red-500/8 px-3 py-2">
+            <span className="text-sm" style={{ color: 'var(--on-negative)' }}>
+              Відключення о <b className="text-primary-c">{minutesToTime(nextOutage.slot.start)}</b> · через {formatCountdown(nextOutage.minutesUntil)}
+            </span>
+          </div>
+        )}
+        {!isOff && !nextOutage && (
+          <p className="text-sm text-secondary-c">Більше відключень не заплановано</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StatusPill({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const current = getCurrentSlot(slots, now);
   const isOff = current?.type === 'Definite';
@@ -143,8 +171,8 @@ function StatusPill({ slots, now }: { slots: Slot[]; now: KyivTime }) {
           isOff ? 'bg-red-500/12' : 'bg-emerald-500/12'
         }`}>
           {isOff
-            ? <ZapOff className="h-5.5 w-5.5" style={{ color: 'var(--on-negative)' }} />
-            : <Zap className="h-5.5 w-5.5" style={{ color: 'var(--on-positive)' }} />}
+            ? <ZapOff className="h-5 w-5" style={{ color: 'var(--on-negative)' }} />
+            : <Zap className="h-5 w-5" style={{ color: 'var(--on-positive)' }} />}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-base font-bold text-primary-c">
@@ -174,57 +202,6 @@ function StatusPill({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   );
 }
 
-// ── Big Status Hero (Comfortable) ─────────────────────────────
-function StatusHero({ slots, now }: { slots: Slot[]; now: KyivTime }) {
-  const current = getCurrentSlot(slots, now);
-  const isOff = current?.type === 'Definite';
-  const nextOutage = getNextOutageSlot(slots, now);
-  const nextOn = getNextOnSlot(slots, now);
-
-  return (
-    <div className={`fade-in-scale apple-card p-5 text-center ${isOff ? 'pulse-red' : 'pulse-green'}`}>
-      <div className={`mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full ${
-        isOff ? 'bg-red-500/12' : 'bg-emerald-500/12'
-      }`}>
-        {isOff
-          ? <ZapOff className="h-8 w-8" style={{ color: 'var(--on-negative)' }} />
-          : <Zap className="h-8 w-8" style={{ color: 'var(--on-positive)' }} />}
-      </div>
-      <h2 className="text-xl font-bold text-primary-c">
-        {isOff ? 'Світла зараз немає' : 'Світло зараз є'}
-      </h2>
-      {current && (
-        <p className="mt-0.5 text-sm text-secondary-c">
-          {isOff ? 'Відключення' : 'Живлення'}: {' '}
-          <span className="font-semibold text-primary-c">
-            {minutesToTime(current.start)} — {minutesToTime(current.end)}
-          </span>
-        </p>
-      )}
-      <div className="mt-3 flex flex-col gap-1.5">
-        {isOff && nextOn && (
-          <div className="rounded-xl bg-emerald-500/8 px-3 py-2">
-            <span className="text-sm" style={{ color: 'var(--on-positive)' }}>
-              Увімкнуть о <b className="text-primary-c">{minutesToTime(nextOn.slot.start)}</b> · через {formatCountdown(nextOn.minutesUntil)}
-            </span>
-          </div>
-        )}
-        {!isOff && nextOutage && (
-          <div className="rounded-xl bg-red-500/8 px-3 py-2">
-            <span className="text-sm" style={{ color: 'var(--on-negative)' }}>
-              Відключення о <b className="text-primary-c">{minutesToTime(nextOutage.slot.start)}</b> · через {formatCountdown(nextOutage.minutesUntil)}
-            </span>
-          </div>
-        )}
-        {!isOff && !nextOutage && (
-          <p className="text-sm text-secondary-c">Більше відключень не заплановано</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Minimal Status (one line) ─────────────────────────────────
 function StatusMinimal({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const current = getCurrentSlot(slots, now);
   const isOff = current?.type === 'Definite';
@@ -240,17 +217,52 @@ function StatusMinimal({ slots, now }: { slots: Slot[]; now: KyivTime }) {
         {isOff ? 'Без світла' : 'Є світло'}
       </span>
       {isOff && nextOn && (
-        <span className="text-xs text-secondary-c">
-          · увімкнуть {minutesToTime(nextOn.slot.start)}
-        </span>
+        <span className="text-xs text-secondary-c">· увімкнуть {minutesToTime(nextOn.slot.start)}</span>
       )}
       {!isOff && nextOutage && (
-        <span className="text-xs text-secondary-c">
-          · відключення {minutesToTime(nextOutage.slot.start)}
-        </span>
+        <span className="text-xs text-secondary-c">· відключення {minutesToTime(nextOutage.slot.start)}</span>
       )}
       {!isOff && !nextOutage && (
         <span className="text-xs text-secondary-c">· без відключень</span>
+      )}
+    </div>
+  );
+}
+
+function StatusNeon({ slots, now }: { slots: Slot[]; now: KyivTime }) {
+  const current = getCurrentSlot(slots, now);
+  const isOff = current?.type === 'Definite';
+  const nextOutage = getNextOutageSlot(slots, now);
+  const nextOn = getNextOnSlot(slots, now);
+  const color = isOff ? 'var(--neon-red)' : 'var(--neon-green)';
+
+  return (
+    <div className="fade-in-scale neon-container p-5 text-center">
+      <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full" style={{ background: `${color}1f` }}>
+        {isOff
+          ? <ZapOff className="h-7 w-7 neon-pulse" style={{ color }} />
+          : <Zap className="h-7 w-7 neon-pulse" style={{ color }} />}
+      </div>
+      <h2 className="text-lg font-bold" style={{ color, textShadow: `0 0 12px ${color}55` }}>
+        {isOff ? 'СВІТЛА НЕМАЄ' : 'СВІТЛО Є'}
+      </h2>
+      {current && (
+        <p className="mt-0.5 text-sm text-secondary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {minutesToTime(current.start)} — {minutesToTime(current.end)}
+        </p>
+      )}
+      {isOff && nextOn && (
+        <p className="mt-2 text-sm" style={{ color: 'var(--neon-green)' }}>
+          ▸ увімкнуть о {minutesToTime(nextOn.slot.start)} · через {formatCountdown(nextOn.minutesUntil)}
+        </p>
+      )}
+      {!isOff && nextOutage && (
+        <p className="mt-2 text-sm" style={{ color: 'var(--neon-red)' }}>
+          ▸ відключення о {minutesToTime(nextOutage.slot.start)} · через {formatCountdown(nextOutage.minutesUntil)}
+        </p>
+      )}
+      {!isOff && !nextOutage && (
+        <p className="mt-2 text-sm text-secondary-c">▸ відключень більше немає</p>
       )}
     </div>
   );
@@ -271,122 +283,40 @@ function EmergencyBanner({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
-// ── Compact Graph ─────────────────────────────────────────────
-function CompactGraph({ slots, now, isToday, updated }: { slots: Slot[]; now: KyivTime; isToday: boolean; updated: string | null }) {
-  const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
-  const sorted = [...slots].sort((a, b) => a.start - b.start);
-  const relUpdate = getRelativeUpdate(updated);
-
-  function getHourStatus(hour: number): 'on' | 'off' | 'partial' {
-    const hourStart = hour * 60;
-    const hourEnd = (hour + 1) * 60;
-    let offMinutes = 0;
-    for (const s of sorted) {
-      if (s.type !== 'Definite') continue;
-      const overlapStart = Math.max(s.start, hourStart);
-      const overlapEnd = Math.min(s.end, hourEnd);
-      if (overlapEnd > overlapStart) offMinutes += overlapEnd - overlapStart;
-    }
-    if (offMinutes >= 45) return 'off';
-    if (offMinutes > 0) return 'partial';
-    return 'on';
+// ── Hour status helper ────────────────────────────────────────
+function getHourStatus(sorted: Slot[], hour: number): 'on' | 'off' | 'partial' {
+  const hourStart = hour * 60;
+  const hourEnd = (hour + 1) * 60;
+  let offMinutes = 0;
+  for (const s of sorted) {
+    if (s.type !== 'Definite') continue;
+    const overlapStart = Math.max(s.start, hourStart);
+    const overlapEnd = Math.min(s.end, hourEnd);
+    if (overlapEnd > overlapStart) offMinutes += overlapEnd - overlapStart;
   }
-
-  return (
-    <div className="fade-in-delay-2">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-3 text-xs">
-          <span className="flex items-center gap-1">
-            <span className="h-2.5 w-2.5 rounded bg-emerald-500/60" />
-            <span className="text-secondary-c">Є</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="h-2.5 w-2.5 rounded bg-red-500/60" />
-            <span className="text-secondary-c">Немає</span>
-          </span>
-        </div>
-        {relUpdate && (
-          <span className="flex items-center gap-1 text-xs text-muted-c">
-            <Clock className="h-3 w-3" />{relUpdate}
-          </span>
-        )}
-      </div>
-      <div className="apple-card p-2.5">
-        <div className="grid grid-cols-24 gap-0.5" style={{ gridTemplateColumns: 'repeat(24, 1fr)' }}>
-          {Array.from({ length: 24 }, (_, hour) => {
-            const status = getHourStatus(hour);
-            const isCurrent = isToday && currentMin >= hour * 60 && currentMin < (hour + 1) * 60;
-            const isPast = isToday && currentMin >= (hour + 1) * 60;
-
-            let bg = 'bg-emerald-500/45';
-            if (status === 'off') bg = 'bg-red-500/55';
-            else if (status === 'partial') bg = 'bg-red-500/30';
-            if (isPast) bg += ' opacity-30';
-
-            return (
-              <div key={hour} className="flex flex-col items-center gap-0.5">
-                <div
-                  className={`graph-bar w-full rounded ${bg} ${isCurrent ? 'ring-1 ring-blue-400/70' : ''}`}
-                  style={{ height: '28px', animationDelay: `${hour * 0.02}s` }}
-                >
-                  {isCurrent && (
-                    <div className="absolute -top-1 left-1/2 now-marker">
-                      <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                    </div>
-                  )}
-                </div>
-                {hour % 3 === 0 && (
-                  <span className={`text-[8px] ${isCurrent ? 'text-blue-500 dark:text-blue-400 font-bold' : 'text-muted-c'}`}>
-                    {String(hour).padStart(2, '0')}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {relUpdate && (
-        <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-c">
-          <Info className="h-3 w-3 shrink-0" />
-          Оновлено: <span className="font-medium text-secondary-c">{relUpdate}</span>
-        </p>
-      )}
-    </div>
-  );
+  if (offMinutes >= 45) return 'off';
+  if (offMinutes > 0) return 'partial';
+  return 'on';
 }
 
-// ── Comfortable Graph ─────────────────────────────────────────
-function ComfortableGraph({ slots, now, isToday, updated }: { slots: Slot[]; now: KyivTime; isToday: boolean; updated: string | null }) {
+// ── Main Graph (beautiful, animated) ──────────────────────────
+function HourlyGraph({ slots, now, isToday, updated, neon }: {
+  slots: Slot[]; now: KyivTime; isToday: boolean; updated: string | null; neon?: boolean;
+}) {
   const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
-  const sorted = [...slots].sort((a, b) => a.start - b.start);
+  const sorted = useMemo(() => [...slots].sort((a, b) => a.start - b.start), [slots]);
   const relUpdate = getRelativeUpdate(updated);
 
-  function getHourStatus(hour: number): 'on' | 'off' | 'partial-on' | 'partial-off' {
-    const hourStart = hour * 60;
-    const hourEnd = (hour + 1) * 60;
-    let offMinutes = 0;
-    for (const s of sorted) {
-      if (s.type !== 'Definite') continue;
-      const overlapStart = Math.max(s.start, hourStart);
-      const overlapEnd = Math.min(s.end, hourEnd);
-      if (overlapEnd > overlapStart) offMinutes += overlapEnd - overlapStart;
-    }
-    if (offMinutes >= 60) return 'off';
-    if (offMinutes >= 30) return 'partial-off';
-    if (offMinutes > 0) return 'partial-on';
-    return 'on';
-  }
-
   return (
-    <div className="fade-in-delay-2">
+    <div className={neon ? 'fade-in-delay-2' : 'fade-in-delay-2'}>
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-3 text-xs">
-          <span className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded bg-emerald-500/55" />
+          <span className="flex items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 rounded-full ${neon ? 'bg-emerald-500' : 'bg-emerald-500/70'}`} />
             <span className="text-secondary-c">Є світло</span>
           </span>
-          <span className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded bg-red-500/55" />
+          <span className="flex items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 rounded-full ${neon ? 'bg-red-500' : 'bg-red-500/70'}`} />
             <span className="text-secondary-c">Немає</span>
           </span>
         </div>
@@ -396,85 +326,101 @@ function ComfortableGraph({ slots, now, isToday, updated }: { slots: Slot[]; now
           </span>
         )}
       </div>
-      <div className="apple-card p-3">
-        <div className="grid grid-cols-12 gap-1">
+
+      <div className={neon ? 'neon-container p-3' : 'apple-card p-3'}>
+        <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(24, 1fr)' }}>
           {Array.from({ length: 24 }, (_, hour) => {
-            const status = getHourStatus(hour);
+            const status = getHourStatus(sorted, hour);
             const isCurrent = isToday && currentMin >= hour * 60 && currentMin < (hour + 1) * 60;
             const isPast = isToday && currentMin >= (hour + 1) * 60;
 
-            let bg = 'bg-emerald-500/45';
-            if (status === 'off') bg = 'bg-red-500/55';
-            else if (status === 'partial-off') bg = 'bg-red-500/35';
-            else if (status === 'partial-on') bg = 'bg-emerald-500/25';
-            if (isPast) bg += ' opacity-30';
+            let barClass = neon ? 'bar-green-neon' : 'bar-green';
+            if (status === 'off') barClass = neon ? 'bar-red-neon' : 'bar-red';
+            else if (status === 'partial') barClass = 'opacity-60 ' + (neon ? 'bar-red-neon' : 'bar-red');
 
             return (
               <div key={hour} className="flex flex-col items-center gap-1">
                 <div
-                  className={`graph-bar relative w-full rounded-lg ${bg} ${isCurrent ? 'ring-2 ring-blue-400/70' : ''}`}
-                  style={{ height: '38px', animationDelay: `${hour * 0.022}s` }}
+                  className={`graph-bar-anim relative w-full rounded-md ${barClass} ${isPast ? 'opacity-30' : ''} ${
+                    isCurrent ? (neon ? 'ring-2' : 'ring-2') : ''
+                  }`}
+                  style={{
+                    height: '44px',
+                    animationDelay: `${hour * 0.03}s`,
+                    ...(isCurrent ? { boxShadow: neon ? '0 0 12px rgba(10,132,255,0.5)' : '0 0 10px rgba(10,132,255,0.35)' } : {}),
+                    ...(isCurrent ? { outline: '2px solid rgba(10,132,255,0.8)', outlineOffset: '1px' } : {}),
+                  }}
                 >
                   {isCurrent && (
-                    <div className="absolute -top-1 left-1/2 now-marker">
-                      <div className="h-2 w-2 rounded-full bg-blue-500 shadow-sm" />
+                    <div className="absolute -top-1.5 left-1/2 now-marker">
+                      <div className="h-2 w-2 rounded-full bg-blue-500 shadow-lg shadow-blue-500/60" />
                     </div>
                   )}
                 </div>
-                <span className={`text-[8px] ${isCurrent ? 'text-blue-500 dark:text-blue-400 font-bold' : 'text-muted-c'}`}>
-                  {hour % 2 === 0 ? String(hour).padStart(2, '0') : ''}
+                <span className={`text-[8px] font-medium ${
+                  isCurrent ? 'text-blue-500 dark:text-blue-400 font-bold' : 'text-muted-c'
+                }`}>
+                  {hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}
                 </span>
               </div>
             );
           })}
         </div>
+
+        {/* Progress line for today */}
+        {isToday && (
+          <div className="mt-2 flex items-center gap-2 px-0.5">
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-1000"
+                style={{ width: `${(currentMin / 1440) * 100}%` }}
+              />
+            </div>
+            <span className="text-[9px] font-medium text-muted-c">
+              {Math.round((currentMin / 1440) * 100)}% дня
+            </span>
+          </div>
+        )}
       </div>
+
       {relUpdate && (
         <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-c">
           <Info className="h-3 w-3 shrink-0" />
-          Оновлено: <span className="font-medium text-secondary-c">{relUpdate}</span>{updated && ` · ${updated}`}
+          Графік оновлено: <span className="font-medium text-secondary-c">{relUpdate}</span>
+          {updated && ` · ${updated}`}
         </p>
       )}
     </div>
   );
 }
 
-// ── Minimal Graph (thin bar) ──────────────────────────────────
+// ── Minimal thin bar graph ────────────────────────────────────
 function MinimalGraph({ slots, now, isToday }: { slots: Slot[]; now: KyivTime; isToday: boolean }) {
   const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
-  const sorted = [...slots].sort((a, b) => a.start - b.start);
-
-  function getHourStatus(hour: number): 'on' | 'off' | 'partial' {
-    const hourStart = hour * 60;
-    const hourEnd = (hour + 1) * 60;
-    let offMinutes = 0;
-    for (const s of sorted) {
-      if (s.type !== 'Definite') continue;
-      const overlapStart = Math.max(s.start, hourStart);
-      const overlapEnd = Math.min(s.end, hourEnd);
-      if (overlapEnd > overlapStart) offMinutes += overlapEnd - overlapStart;
-    }
-    if (offMinutes >= 45) return 'off';
-    if (offMinutes > 0) return 'partial';
-    return 'on';
-  }
+  const sorted = useMemo(() => [...slots].sort((a, b) => a.start - b.start), [slots]);
 
   return (
     <div className="fade-in-delay-2">
       <div className="apple-card p-2">
-        <div className="flex h-6 gap-px overflow-hidden rounded-lg">
+        <div className="flex h-7 gap-px overflow-hidden rounded-lg">
           {Array.from({ length: 24 }, (_, hour) => {
-            const status = getHourStatus(hour);
+            const status = getHourStatus(sorted, hour);
             const isCurrent = isToday && currentMin >= hour * 60 && currentMin < (hour + 1) * 60;
             const isPast = isToday && currentMin >= (hour + 1) * 60;
 
-            let bg = 'bg-emerald-500/50';
-            if (status === 'off') bg = 'bg-red-500/55';
-            else if (status === 'partial') bg = 'bg-red-500/30';
+            let bg = 'bar-green';
+            if (status === 'off') bg = 'bar-red';
+            else if (status === 'partial') bg = 'bar-red opacity-50';
             if (isPast) bg += ' opacity-25';
-            if (isCurrent) bg = 'bg-blue-500/70';
+            if (isCurrent) bg = 'bg-blue-500/80';
 
-            return <div key={hour} className={`graph-bar h-full flex-1 ${bg}`} style={{ animationDelay: `${hour * 0.015}s` }} />;
+            return (
+              <div
+                key={hour}
+                className={`graph-bar-anim h-full flex-1 rounded-sm ${bg}`}
+                style={{ animationDelay: `${hour * 0.02}s`, transformOrigin: 'bottom' }}
+              />
+            );
           })}
         </div>
         <div className="mt-1 flex justify-between text-[8px] text-muted-c">
@@ -485,40 +431,45 @@ function MinimalGraph({ slots, now, isToday }: { slots: Slot[]; now: KyivTime; i
   );
 }
 
-// ── Compact Event List ────────────────────────────────────────
-function CompactList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime; isToday: boolean }) {
-  const sorted = [...slots].sort((a, b) => a.start - b.start);
+// ── Event lists ───────────────────────────────────────────────
+function CompactList({ slots, now, isToday, neon }: { slots: Slot[]; now: KyivTime; isToday: boolean; neon?: boolean }) {
+  const sorted = useMemo(() => [...slots].sort((a, b) => a.start - b.start), [slots]);
   const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
 
   if (sorted.length === 0) return (
-    <div className="apple-card py-6 text-center fade-in-delay-3">
+    <div className={`${neon ? 'neon-container' : 'apple-card'} py-6 text-center fade-in-delay-3`}>
       <p className="text-sm text-secondary-c">Графік поки не доступний</p>
     </div>
   );
 
   return (
-    <div className="apple-card overflow-hidden fade-in-delay-3">
+    <div className={`${neon ? 'neon-container' : 'apple-card'} overflow-hidden fade-in-delay-3`}>
       {sorted.map((slot, i) => {
         const isOff = slot.type === 'Definite';
         const active = isToday && isSlotActive(slot, now);
         const isPast = isToday && currentMin >= slot.end;
+        const dotColor = isOff ? 'var(--on-negative)' : 'var(--on-positive)';
 
         return (
           <div
             key={i}
-            className={`flex items-center gap-3 px-4 py-2.5 ${
-              i < sorted.length - 1 ? 'border-b' : ''
-            } ${active ? (isOff ? 'bg-red-500/6' : 'bg-emerald-500/6') : isPast ? 'opacity-35' : ''}`}
-            style={{ borderBottomColor: 'var(--border-subtle)' }}
+            className={`flex items-center gap-3 px-4 py-2.5 ${i < sorted.length - 1 ? 'border-b border-subtle-c' : ''} ${
+              active ? (isOff ? 'bg-red-500/6' : 'bg-emerald-500/6') : isPast ? 'opacity-35' : ''
+            }`}
           >
-            <div className={`h-2 w-2 shrink-0 rounded-full ${isOff ? 'bg-red-500' : 'bg-emerald-500'} ${active ? 'ring-2 ring-offset-1 ring-offset-transparent' : ''}`}
-              style={active ? { boxShadow: `0 0 6px ${isOff ? 'var(--on-negative)' : 'var(--on-positive)'}` } : {}}
+            <div
+              className={`h-2 w-2 shrink-0 rounded-full ${active ? 'now-marker' : ''}`}
+              style={{
+                background: dotColor,
+                left: active ? undefined : 0,
+                ...(active ? { boxShadow: `0 0 8px ${dotColor}` } : {}),
+              }}
             />
             <span className="text-sm font-semibold text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>
               {minutesToTime(slot.start)}–{minutesToTime(slot.end)}
             </span>
             {active && (
-              <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold accent-soft-bg accent-c">
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${neon ? 'text-blue-400' : 'accent-soft-bg accent-c'}`}>
                 зараз
               </span>
             )}
@@ -532,9 +483,8 @@ function CompactList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime; is
   );
 }
 
-// ── Comfortable Event List ────────────────────────────────────
 function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime; isToday: boolean }) {
-  const sorted = [...slots].sort((a, b) => a.start - b.start);
+  const sorted = useMemo(() => [...slots].sort((a, b) => a.start - b.start), [slots]);
   const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
 
   if (sorted.length === 0) return (
@@ -571,9 +521,7 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
                   {minutesToTime(slot.start)} — {minutesToTime(slot.end)}
                 </span>
                 {active && (
-                  <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold accent-soft-bg accent-c">
-                    зараз
-                  </span>
+                  <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold accent-soft-bg accent-c">зараз</span>
                 )}
               </div>
               <p className={`text-xs ${isOff ? 'text-red-400/70 dark:text-red-300/60' : 'text-emerald-500/70 dark:text-emerald-300/60'}`}>
@@ -587,30 +535,201 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
   );
 }
 
-// ── Display Mode Switcher ─────────────────────────────────────
-function DisplayModeSwitcher({ mode, onChange }: { mode: DisplayMode; onChange: (m: DisplayMode) => void }) {
-  const modes: { id: DisplayMode; label: string; icon: typeof LayoutGrid }[] = [
-    { id: 'minimal', label: 'Міні', icon: Gauge },
-    { id: 'comfortable', label: 'Комфорт', icon: LayoutGrid },
-    { id: 'compact', label: 'Компакт', icon: Rows3 },
-  ];
+// ── Style Picker (list with hints) ────────────────────────────
+function StylePicker({ style, onChange, compact }: { style: DisplayStyle; onChange: (s: DisplayStyle) => void; compact?: boolean }) {
   return (
-    <div className="segmented">
-      {modes.map((m) => {
-        const Icon = m.icon;
+    <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
+      {STYLE_OPTIONS.map((opt) => {
+        const Icon = opt.icon;
+        const selected = style === opt.id;
         return (
           <button
-            key={m.id}
-            onClick={() => { onChange(m.id); hapticImpact('light'); }}
-            className={`segmented-item flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold ${
-              mode === m.id ? 'active text-primary-c' : 'text-secondary-c'
+            key={opt.id}
+            onClick={() => { onChange(opt.id); hapticImpact('light'); }}
+            className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-all ${
+              selected ? 'apple-card ring-2 ring-blue-500/40' : 'glass hover:scale-[1.01]'
             }`}
           >
-            <Icon className="h-3.5 w-3.5" />
-            {m.label}
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+              selected ? 'accent-soft-bg' : 'bg-black/5 dark:bg-white/10'
+            }`}>
+              <Icon className={`h-5 w-5 ${selected ? 'accent-c' : 'text-secondary-c'}`} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className={`text-sm font-bold ${selected ? 'accent-c' : 'text-primary-c'}`}>{opt.name}</p>
+              <p className="mt-0.5 text-xs text-secondary-c">{opt.desc}</p>
+            </div>
+            {selected && <Check className="h-5 w-5 shrink-0 accent-c" />}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// ── Onboarding ────────────────────────────────────────────────
+function Onboarding({
+  step, setStep, cities, selectedCity, setSelectedCity, selectedGroup, setSelectedGroup,
+  displayStyle, setDisplayStyle, onFinish, scheduleLoading, availableGroups,
+}: {
+  step: number;
+  setStep: (n: number) => void;
+  cities: City[];
+  selectedCity: City | null;
+  setSelectedCity: (c: City) => void;
+  selectedGroup: string;
+  setSelectedGroup: (g: string) => void;
+  displayStyle: DisplayStyle;
+  setDisplayStyle: (s: DisplayStyle) => void;
+  onFinish: () => void;
+  scheduleLoading: boolean;
+  availableGroups: string[];
+}) {
+  const [citySearch, setCitySearch] = useState('');
+  const filtered = useMemo(() => {
+    if (!citySearch.trim()) return cities;
+    const q = citySearch.toLowerCase();
+    return cities.filter((c) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
+  }, [cities, citySearch]);
+
+  const totalSteps = 4;
+
+  return (
+    <div className="flex min-h-screen flex-col bg-primary-c px-6 py-8" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      {/* Progress dots */}
+      <div className="mb-6 flex justify-center gap-1.5">
+        {Array.from({ length: totalSteps }, (_, i) => (
+          <div
+            key={i}
+            className={`h-1.5 rounded-full transition-all duration-300 ${
+              i === step ? 'w-6 accent-bg' : i < step ? 'w-1.5 accent-bg opacity-50' : 'w-1.5 bg-black/10 dark:bg-white/15'
+            }`}
+          />
+        ))}
+      </div>
+
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col" key={step}>
+        {/* Step 0: Welcome */}
+        {step === 0 && (
+          <div className="flex flex-1 flex-col items-center justify-center text-center fade-in-right">
+            <div className="logo-bounce mb-6 flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-500 to-emerald-500 shadow-xl shadow-blue-500/30">
+              <Zap className="h-12 w-12 text-white" />
+            </div>
+            <p className="mb-1 text-base text-secondary-c">{greeting()}!</p>
+            <h1 className="text-3xl font-extrabold text-primary-c">Графік світла</h1>
+            <p className="mt-3 max-w-xs text-base text-secondary-c">
+              Дізнавайтесь, коли буде світло у вашій черзі — швидко і просто
+            </p>
+            <div className="mt-6 flex items-center gap-1.5 rounded-full glass px-4 py-2 text-xs text-secondary-c">
+              <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+              Налаштування займе менше хвилини
+            </div>
+          </div>
+        )}
+
+        {/* Step 1: City */}
+        {step === 1 && (
+          <div className="flex flex-1 flex-col fade-in-right">
+            <h2 className="text-2xl font-extrabold text-primary-c">Ваше місто</h2>
+            <p className="mb-4 mt-1 text-sm text-secondary-c">Оберіть місто, щоб ми показали правильний графік</p>
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
+              <input
+                type="text" value={citySearch} onChange={(e) => setCitySearch(e.target.value)}
+                placeholder="Пошук міста..."
+                className="w-full rounded-xl glass py-3 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+              />
+            </div>
+            <div className="max-h-80 flex-1 space-y-1 overflow-y-auto rounded-2xl glass p-2">
+              {filtered.map((city) => (
+                <button
+                  key={city.slug}
+                  onClick={() => { setSelectedCity(city); setSelectedGroup(''); hapticImpact('light'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-all ${
+                    selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <MapPin className="h-4 w-4 shrink-0" />
+                  {city.name}
+                  {selectedCity?.slug === city.slug && <Check className="ml-auto h-4 w-4" />}
+                </button>
+              ))}
+              {filtered.length === 0 && <p className="py-6 text-center text-sm text-muted-c">Не знайдено</p>}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Queue */}
+        {step === 2 && (
+          <div className="flex flex-1 flex-col fade-in-right">
+            <h2 className="text-2xl font-extrabold text-primary-c">Ваша черга</h2>
+            <p className="mb-4 mt-1 text-sm text-secondary-c">
+              Черга вказана у вашому рахунку за електроенергію
+            </p>
+            {scheduleLoading ? (
+              <div className="flex flex-1 items-center justify-center text-secondary-c">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Завантаження черг...
+              </div>
+            ) : (
+              <div className="grid flex-1 grid-cols-4 content-start gap-2">
+                {(availableGroups.length > 0 ? availableGroups : ALL_GROUPS).map((group) => (
+                  <button
+                    key={group}
+                    onClick={() => { setSelectedGroup(group); hapticImpact('light'); }}
+                    className={`rounded-2xl px-2 py-4 text-center text-base font-bold transition-all ${
+                      selectedGroup === group ? 'accent-soft-bg accent-c ring-2 ring-blue-500/40' : 'glass text-secondary-c hover:scale-105'
+                    }`}
+                  >{group}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Style */}
+        {step === 3 && (
+          <div className="flex flex-1 flex-col fade-in-right">
+            <div className="mb-1 flex items-center gap-2">
+              <Palette className="h-6 w-6 accent-c" />
+              <h2 className="text-2xl font-extrabold text-primary-c">Стиль</h2>
+            </div>
+            <p className="mb-4 mt-1 text-sm text-secondary-c">
+              Оберіть, як виглядатиме графік — потім можна змінити в налаштуваннях
+            </p>
+            <div className="flex-1 overflow-y-auto">
+              <StylePicker style={displayStyle} onChange={setDisplayStyle} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Nav buttons */}
+      <div className="mx-auto mt-6 flex w-full max-w-md gap-2">
+        {step > 0 && (
+          <button
+            onClick={() => { setStep(step - 1); hapticImpact('light'); }}
+            className="flex h-13 w-14 items-center justify-center rounded-2xl glass text-primary-c"
+            aria-label="Назад"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
+        <button
+          onClick={() => {
+            if (step === 3) { onFinish(); hapticNotification('success'); }
+            else if (step === 1 && !selectedCity) return;
+            else if (step === 2 && !selectedGroup) return;
+            else { setStep(step + 1); hapticImpact('light'); }
+          }}
+          disabled={(step === 1 && !selectedCity) || (step === 2 && !selectedGroup)}
+          className="flex flex-1 items-center justify-center gap-2 rounded-2xl accent-bg py-4 text-base font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] disabled:opacity-40"
+        >
+          {step === 0 && <>Почнемо <ArrowRight className="h-5 w-5" /></>}
+          {step === 1 && <>Далі <ArrowRight className="h-5 w-5" /></>}
+          {step === 2 && <>Далі <ArrowRight className="h-5 w-5" /></>}
+          {step === 3 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
+        </button>
+      </div>
     </div>
   );
 }
@@ -625,7 +744,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState<KyivTime>(getKyivTime());
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>(getInitialDisplayMode);
+  const [displayStyle, setDisplayStyle] = useState<DisplayStyle>(getInitialStyle);
+  const [onboarded, setOnboarded] = useState<boolean>(() => localStorage.getItem('onboarded') === '1');
+  const [obStep, setObStep] = useState(0);
 
   const [cities, setCities] = useState<City[]>([]);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
@@ -635,8 +756,6 @@ function App() {
   const [tomorrowSchedule, setTomorrowSchedule] = useState<CitySchedule | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [citySearch, setCitySearch] = useState('');
-  const [geoDetecting, setGeoDetecting] = useState(false);
   const [showEmergency, setShowEmergency] = useState(true);
 
   const [notifyEnabled, setNotifyEnabled] = useState(true);
@@ -654,8 +773,8 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem('displayMode', displayMode);
-  }, [displayMode]);
+    localStorage.setItem('displayStyle', displayStyle);
+  }, [displayStyle]);
 
   useEffect(() => {
     fetchCities()
@@ -714,30 +833,6 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const detectCity = useCallback(() => {
-    if (cities.length === 0) return;
-    setGeoDetecting(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const nearest = findNearestCity(pos.coords.latitude, pos.coords.longitude, cities);
-        if (nearest) {
-          setSelectedCity(nearest); setSelectedGroup('');
-          setTodaySchedule(null); setTomorrowSchedule(null);
-          hapticImpact('medium');
-        }
-        setGeoDetecting(false);
-      },
-      () => { setGeoDetecting(false); },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
-    );
-  }, [cities]);
-
-  const filteredCities = useMemo(() => {
-    if (!citySearch.trim()) return cities;
-    const q = citySearch.toLowerCase();
-    return cities.filter((c) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
-  }, [cities, citySearch]);
-
   const displaySchedule = dayTab === 'today' ? todaySchedule : tomorrowSchedule;
   const displaySlots = useMemo<Slot[]>(() => {
     if (!displaySchedule || !selectedGroup) return [];
@@ -758,62 +853,30 @@ function App() {
     </div>
   );
 
-  // Render schedule content based on display mode
-  const renderScheduleContent = () => {
-    if (scheduleLoading) return (
-      <div className="flex flex-col items-center justify-center py-12 fade-in">
-        <Loader2 className="h-8 w-8 animate-spin accent-c" />
-        <p className="mt-2 text-sm text-secondary-c">Завантаження...</p>
-      </div>
-    );
-
+  // Onboarding flow
+  if (!onboarded) {
     return (
-      <>
-        {showEmergency && <div className="mb-3"><EmergencyBanner onDismiss={() => { setShowEmergency(false); hapticImpact('light'); }} /></div>}
-
-        {/* Status */}
-        {displayMode === 'minimal' && <div className="mb-3"><StatusMinimal slots={todaySlots} now={now} /></div>}
-        {displayMode === 'comfortable' && <div className="mb-3"><StatusHero slots={todaySlots} now={now} /></div>}
-        {displayMode === 'compact' && <div className="mb-3"><StatusPill slots={todaySlots} now={now} /></div>}
-
-        {/* Day tabs */}
-        <div className="mb-3 flex justify-center fade-in-delay-1">
-          <div className="segmented">
-            <button
-              onClick={() => { setDayTab('today'); hapticImpact('light'); }}
-              className={`segmented-item px-5 py-1.5 text-sm font-semibold ${dayTab === 'today' ? 'active text-primary-c' : 'text-secondary-c'}`}
-            >Сьогодні</button>
-            <button
-              onClick={() => { setDayTab('tomorrow'); hapticImpact('light'); }}
-              className={`segmented-item px-5 py-1.5 text-sm font-semibold ${dayTab === 'tomorrow' ? 'active text-primary-c' : 'text-secondary-c'}`}
-            >Завтра</button>
-          </div>
-        </div>
-
-        {/* Graph */}
-        <div className="mb-4">
-          {displayMode === 'minimal' && <MinimalGraph slots={displaySlots} now={now} isToday={dayTab === 'today'} />}
-          {displayMode === 'comfortable' && <ComfortableGraph slots={displaySlots} now={now} isToday={dayTab === 'today'} updated={displaySchedule?.updated ?? null} />}
-          {displayMode === 'compact' && <CompactGraph slots={displaySlots} now={now} isToday={dayTab === 'today'} updated={displaySchedule?.updated ?? null} />}
-        </div>
-
-        {/* Event list */}
-        <div className="mb-4">
-          {displayMode === 'minimal' && <CompactList slots={displaySlots} now={now} isToday={dayTab === 'today'} />}
-          {displayMode === 'comfortable' && <ComfortableList slots={displaySlots} now={now} isToday={dayTab === 'today'} />}
-          {displayMode === 'compact' && <CompactList slots={displaySlots} now={now} isToday={dayTab === 'today'} />}
-        </div>
-
-        {displaySchedule?.updated && displayMode !== 'minimal' && (
-          <p className="mb-4 text-center text-xs text-muted-c">Оновлено: {displaySchedule.updated}</p>
-        )}
-
-        <footer className="mt-6 border-t pt-3 text-center" style={{ borderColor: 'var(--border-subtle)' }}>
-          <p className="text-xs text-muted-c">bezsvitla.com.ua · Київський час</p>
-        </footer>
-      </>
+      <Onboarding
+        step={obStep}
+        setStep={setObStep}
+        cities={cities}
+        selectedCity={selectedCity}
+        setSelectedCity={setSelectedCity}
+        selectedGroup={selectedGroup}
+        setSelectedGroup={setSelectedGroup}
+        displayStyle={displayStyle}
+        setDisplayStyle={setDisplayStyle}
+        scheduleLoading={scheduleLoading}
+        availableGroups={availableGroups}
+        onFinish={() => {
+          localStorage.setItem('onboarded', '1');
+          setOnboarded(true);
+        }}
+      />
     );
-  };
+  }
+
+  const isNeon = displayStyle === 'neon';
 
   return (
     <div className="min-h-screen bg-primary-c" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -849,25 +912,20 @@ function App() {
                 ) : null}
               </div>
             </div>
-            {view === 'schedule' && (
-              <div className="flex items-center gap-1.5">
-                <DisplayModeSwitcher mode={displayMode} onChange={setDisplayMode} />
-              </div>
-            )}
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => { setTheme(theme === 'dark' ? 'light' : 'dark'); hapticImpact('light'); }}
                 className="flex h-9 w-9 items-center justify-center rounded-full glass"
                 aria-label="Тема"
               >
-                {theme === 'dark' ? <Sun className="h-4.5 w-4.5 text-amber-400" /> : <Moon className="h-4.5 w-4.5 text-slate-600" />}
+                {theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-600" />}
               </button>
               {view === 'schedule' && (
                 <button
                   onClick={() => { setView('settings'); hapticImpact('light'); }}
                   className="flex h-9 w-9 items-center justify-center rounded-full glass"
                 >
-                  <Settings className="h-4.5 w-4.5 accent-c" />
+                  <Settings className="h-4 w-4 accent-c" />
                 </button>
               )}
             </div>
@@ -877,7 +935,7 @@ function App() {
         {/* ── SCHEDULE VIEW ── */}
         {view === 'schedule' && (
           <>
-            {displayMode !== 'minimal' && (
+            {displayStyle !== 'minimal' && displayStyle !== 'neon' && (
               <div className="mb-4 text-center fade-in">
                 <span className="font-mono text-2xl font-bold tracking-tight text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{now.timeString}</span>
                 <span className="ml-2 text-xs text-muted-c">Київ</span>
@@ -897,20 +955,65 @@ function App() {
             {!selectedCity || !selectedGroup ? (
               <div className="flex flex-col items-center justify-center apple-card py-12 text-center fade-in-scale">
                 <MapPin className="mb-3 h-12 w-12 text-muted-c" />
-                <h2 className="mb-1.5 text-lg font-bold text-primary-c">Оберіть місто</h2>
-                <p className="mb-4 max-w-xs text-sm text-secondary-c">Оберіть місто та чергу, щоб побачити графік</p>
-                <div className="flex flex-col gap-2">
-                  <button onClick={() => { setView('settings'); hapticImpact('light'); }}
-                    className="rounded-xl accent-bg px-6 py-3 text-sm font-semibold text-white transition-all hover:scale-[1.02]">
-                    Обрати місто
-                  </button>
-                  <button onClick={detectCity} disabled={geoDetecting}
-                    className="flex items-center justify-center gap-2 rounded-xl glass px-5 py-2.5 text-sm font-medium text-secondary-c disabled:opacity-50">
-                    {geoDetecting ? <><Loader2 className="h-4 w-4 animate-spin" /> Визначаю...</> : <><Navigation className="h-4 w-4" /> За геолокацією</>}
-                  </button>
-                </div>
+                <h2 className="mb-1.5 text-lg font-bold text-primary-c">Оберіть місто та чергу</h2>
+                <p className="mb-4 max-w-xs text-sm text-secondary-c">Це можна зробити в налаштуваннях</p>
+                <button onClick={() => { setView('settings'); hapticImpact('light'); }}
+                  className="rounded-xl accent-bg px-6 py-3 text-sm font-semibold text-white transition-all hover:scale-[1.02]">
+                  Перейти до налаштувань
+                </button>
               </div>
-            ) : renderScheduleContent()}
+            ) : scheduleLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 fade-in">
+                <Loader2 className="h-8 w-8 animate-spin accent-c" />
+                <p className="mt-2 text-sm text-secondary-c">Завантаження графіку...</p>
+              </div>
+            ) : (
+              <>
+                {showEmergency && <div className="mb-3"><EmergencyBanner onDismiss={() => { setShowEmergency(false); hapticImpact('light'); }} /></div>}
+
+                {/* Status by style */}
+                {displayStyle === 'ios' && <div className="mb-3"><StatusHero slots={todaySlots} now={now} /></div>}
+                {displayStyle === 'compact' && <div className="mb-3"><StatusPill slots={todaySlots} now={now} /></div>}
+                {displayStyle === 'minimal' && <div className="mb-3"><StatusMinimal slots={todaySlots} now={now} /></div>}
+                {displayStyle === 'neon' && <div className="mb-3"><StatusNeon slots={todaySlots} now={now} /></div>}
+
+                {/* Day tabs */}
+                <div className="mb-3 flex justify-center fade-in-delay-1">
+                  <div className="segmented">
+                    <button
+                      onClick={() => { setDayTab('today'); hapticImpact('light'); }}
+                      className={`segmented-item px-5 py-1.5 text-sm font-semibold ${dayTab === 'today' ? 'active text-primary-c' : 'text-secondary-c'}`}
+                    >Сьогодні</button>
+                    <button
+                      onClick={() => { setDayTab('tomorrow'); hapticImpact('light'); }}
+                      className={`segmented-item px-5 py-1.5 text-sm font-semibold ${dayTab === 'tomorrow' ? 'active text-primary-c' : 'text-secondary-c'}`}
+                    >Завтра</button>
+                  </div>
+                </div>
+
+                {/* Graph */}
+                <div className="mb-4">
+                  {displayStyle === 'minimal'
+                    ? <MinimalGraph slots={displaySlots} now={now} isToday={dayTab === 'today'} />
+                    : <HourlyGraph
+                        slots={displaySlots} now={now} isToday={dayTab === 'today'}
+                        updated={displaySchedule?.updated ?? null}
+                        neon={isNeon}
+                      />}
+                </div>
+
+                {/* Event list */}
+                <div className="mb-4">
+                  {displayStyle === 'ios'
+                    ? <ComfortableList slots={displaySlots} now={now} isToday={dayTab === 'today'} />
+                    : <CompactList slots={displaySlots} now={now} isToday={dayTab === 'today'} neon={isNeon} />}
+                </div>
+
+                <footer className="mt-6 border-t pt-3 text-center" style={{ borderColor: 'var(--border-subtle)' }}>
+                  <p className="text-xs text-muted-c">bezsvitla.com.ua · Київський час</p>
+                </footer>
+              </>
+            )}
           </>
         )}
 
@@ -923,92 +1026,71 @@ function App() {
               </div>
             )}
 
-            {/* Display mode setting */}
-            <div className="apple-card p-4">
-              <h3 className="mb-3 text-sm font-bold text-primary-c">Відображення</h3>
-              <div className="flex justify-center">
-                <DisplayModeSwitcher mode={displayMode} onChange={setDisplayMode} />
+            {/* Display style */}
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Palette className="h-4 w-4 accent-c" />
+                <h3 className="text-base font-bold text-primary-c">Стиль відображення</h3>
               </div>
+              <StylePicker style={displayStyle} onChange={setDisplayStyle} compact />
             </div>
 
-            {/* Step 1: City */}
+            {/* City */}
             <div>
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg text-xs font-bold accent-c">1</span>
-                  <h3 className="text-base font-bold text-primary-c">Місто</h3>
-                </div>
-                <button onClick={detectCity} disabled={geoDetecting}
-                  className="flex items-center gap-1 rounded-lg glass px-2.5 py-1.5 text-xs font-medium text-secondary-c disabled:opacity-50">
-                  {geoDetecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Navigation className="h-3.5 w-3.5" />}
-                  Авто
-                </button>
-              </div>
-              <div className="relative mb-2">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
-                <input
-                  type="text" value={citySearch} onChange={(e) => setCitySearch(e.target.value)}
-                  placeholder="Пошук міста..."
-                  className="w-full rounded-xl glass py-2.5 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
-              </div>
-              <div className="max-h-56 space-y-0.5 overflow-y-auto rounded-xl glass p-1.5">
-                {filteredCities.map((city) => (
+              <h3 className="mb-2 text-base font-bold text-primary-c">Місто</h3>
+              <div className="max-h-52 space-y-0.5 overflow-y-auto rounded-2xl glass p-1.5">
+                {cities.map((city) => (
                   <button
                     key={city.slug}
                     onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
                     className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
-                      selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/4 dark:hover:bg-white/5'
+                      selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c hover:bg-black/5 dark:hover:bg-white/5'
                     }`}
                   >
                     <MapPin className="h-4 w-4 shrink-0" />
                     {city.name}
                   </button>
                 ))}
-                {filteredCities.length === 0 && <p className="py-4 text-center text-sm text-muted-c">Не знайдено</p>}
               </div>
             </div>
 
-            {/* Step 2: Queue */}
-            {selectedCity && (
-              <div className="fade-in">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg text-xs font-bold accent-c">2</span>
-                  <h3 className="text-base font-bold text-primary-c">Черга</h3>
+            {/* Queue */}
+            <div className="fade-in">
+              <h3 className="mb-2 text-base font-bold text-primary-c">Черга</h3>
+              <p className="mb-2 text-xs text-secondary-c">Вказана у рахунку за електроенергію</p>
+              {scheduleLoading ? (
+                <div className="flex items-center gap-2 py-3 text-sm text-secondary-c"><Loader2 className="h-4 w-4 animate-spin" /> Завантаження...</div>
+              ) : (
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(availableGroups.length > 0 ? availableGroups : ALL_GROUPS).map((group) => (
+                    <button
+                      key={group}
+                      onClick={() => { setSelectedGroup(group); hapticImpact('light'); }}
+                      className={`rounded-lg px-2 py-2.5 text-center text-sm font-bold transition-all ${
+                        selectedGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'glass text-secondary-c hover:scale-105'
+                      }`}
+                    >{group}</button>
+                  ))}
                 </div>
-                <p className="mb-2 text-xs text-secondary-c">Вказана у рахунку за електроенергію</p>
-                {scheduleLoading ? (
-                  <div className="flex items-center gap-2 py-3 text-sm text-secondary-c"><Loader2 className="h-4 w-4 animate-spin" /> Завантаження...</div>
-                ) : (
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {(availableGroups.length > 0 ? availableGroups : ALL_GROUPS).map((group) => (
-                      <button
-                        key={group}
-                        onClick={() => { setSelectedGroup(group); hapticImpact('light'); }}
-                        className={`rounded-lg px-2 py-2.5 text-center text-sm font-bold transition-all ${
-                          selectedGroup === group ? 'accent-soft-bg accent-c ring-1' : 'glass text-secondary-c hover:scale-105'
-                        }`}
-                      >{group}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Notifications */}
             {tgUser && (
               <div className="apple-card p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {notifyEnabled ? <Bell className="h-4.5 w-4.5 accent-c" /> : <BellOff className="h-4.5 w-4.5 text-muted-c" />}
+                    {notifyEnabled ? <Bell className="h-4 w-4 accent-c" /> : <BellOff className="h-4 w-4 text-muted-c" />}
                     <h3 className="text-sm font-bold text-primary-c">Сповіщення</h3>
                   </div>
                   <button
                     onClick={() => { setNotifyEnabled(!notifyEnabled); hapticImpact('medium'); }}
                     className={`relative h-6 w-10 rounded-full transition-colors ${notifyEnabled ? 'accent-bg' : 'bg-black/10 dark:bg-white/10'}`}
                   >
-                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${notifyEnabled ? 'translate-x-4.5' : 'translate-x-0.5'}`}
-                      style={{ transform: notifyEnabled ? 'translateX(20px)' : 'translateX(2px)' }} />
+                    <span
+                      className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                      style={{ transform: notifyEnabled ? 'translateX(18px)' : 'translateX(2px)' }}
+                    />
                   </button>
                 </div>
                 {notifyEnabled && (
@@ -1020,7 +1102,7 @@ function App() {
                           key={mins}
                           onClick={() => { setNotifyMinutes(mins); hapticImpact('light'); }}
                           className={`rounded-lg px-3 py-2.5 text-center text-sm font-semibold transition-all ${
-                            notifyMinutes === mins ? 'accent-soft-bg accent-c ring-1' : 'glass text-secondary-c'
+                            notifyMinutes === mins ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'glass text-secondary-c'
                           }`}
                         >{mins} хв</button>
                       ))}
@@ -1029,6 +1111,14 @@ function App() {
                 )}
               </div>
             )}
+
+            {/* Replay onboarding */}
+            <button
+              onClick={() => { setObStep(0); setOnboarded(false); localStorage.removeItem('onboarded'); }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl glass px-4 py-3 text-sm font-medium text-secondary-c transition-all hover:scale-[1.01]"
+            >
+              <Sparkles className="h-4 w-4" /> Пройти налаштування знову
+            </button>
 
             <button
               onClick={() => { setView('schedule'); hapticImpact('light'); }}
