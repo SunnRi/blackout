@@ -482,14 +482,13 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
 }
 
 // ── Pickers ───────────────────────────────────────────────────
-function OptionList<T extends string>({ options, value, onChange, compact }: {
-  options: { id: T; name: string; desc: string; icon: typeof Palette }[];
+function OptionRow<T extends string>({ options, value, onChange }: {
+  options: { id: T; name: string; icon: typeof Palette }[];
   value: T;
   onChange: (v: T) => void;
-  compact?: boolean;
 }) {
   return (
-    <div className={compact ? 'space-y-1' : 'space-y-2'}>
+    <div className="segmented flex w-full">
       {options.map((opt) => {
         const Icon = opt.icon;
         const selected = value === opt.id;
@@ -497,20 +496,13 @@ function OptionList<T extends string>({ options, value, onChange, compact }: {
           <button
             key={opt.id}
             onClick={() => { onChange(opt.id); hapticImpact('light'); }}
-            className={`flex w-full items-center gap-2.5 text-left transition-all ${
-              compact ? 'rounded-xl px-3 py-2' : 'rounded-2xl px-4 py-3.5'
-            } ${selected ? 'd-card ring-2 ring-blue-500/40' : 'd-btn hover:scale-[1.01]'}`}
+            title={opt.name}
+            className={`segmented-item flex flex-1 items-center justify-center gap-1.5 px-2 py-2 text-xs font-semibold ${
+              selected ? 'active accent-c' : 'text-secondary-c'
+            }`}
           >
-            <div className={`flex shrink-0 items-center justify-center rounded-lg ${
-              compact ? 'h-7 w-7' : 'h-10 w-10 rounded-xl'
-            } ${selected ? 'accent-soft-bg' : 'bg-black/5 dark:bg-white/10'}`}>
-              <Icon className={`${compact ? 'h-3.5 w-3.5' : 'h-5 w-5'} ${selected ? 'accent-c' : 'text-secondary-c'}`} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className={`${compact ? 'text-xs' : 'text-sm'} font-bold ${selected ? 'accent-c' : 'text-primary-c'}`}>{opt.name}</p>
-              {!compact && <p className="mt-0.5 text-xs text-secondary-c">{opt.desc}</p>}
-            </div>
-            {selected && <Check className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} shrink-0 accent-c`} />}
+            <Icon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{opt.name}</span>
           </button>
         );
       })}
@@ -987,7 +979,10 @@ function App() {
               <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">
                 <Palette className="h-3.5 w-3.5 accent-c" /> Дизайн
               </h3>
-              <OptionList options={DESIGN_OPTIONS} value={design} onChange={setDesign} compact />
+              <OptionRow
+                options={DESIGN_OPTIONS.map(({ id, name, icon }) => ({ id, name, icon }))}
+                value={design} onChange={setDesign}
+              />
             </div>
 
             {/* Density */}
@@ -995,7 +990,10 @@ function App() {
               <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">
                 <Eye className="h-3.5 w-3.5 accent-c" /> Що показувати
               </h3>
-              <OptionList options={DENSITY_OPTIONS} value={density} onChange={setDensity} compact />
+              <OptionRow
+                options={DENSITY_OPTIONS.map(({ id, name, icon }) => ({ id, name, icon }))}
+                value={density} onChange={setDensity}
+              />
             </div>
 
             {/* Theme */}
