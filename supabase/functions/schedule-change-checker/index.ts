@@ -330,7 +330,7 @@ async function checkCity(
       const change = changes.find((c) => c.queue === ch.queue);
       if (!change) continue;
       for (const f of followers) {
-        if (f.queue_group === change.queue && f.notify_enabled) {
+        if (f.notify_enabled) {
           outboxRows.push({ tg_user_id: f.tg_user_id, change_id: ch.id });
         }
       }
