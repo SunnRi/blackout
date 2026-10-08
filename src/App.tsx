@@ -1251,6 +1251,7 @@ function App() {
   const [activeLocation, setActiveLocation] = useState<'home' | 'work'>('home');
   const [altExpanded, setAltExpanded] = useState(false);
   const [homeExpanded, setHomeExpanded] = useState(false);
+  const [homeConfigured, setHomeConfigured] = useState(false);
   const [altOblastList, setAltOblastList] = useState<Oblast[]>(oblasts);
   const [altCities, setAltCities] = useState<City[]>([]);
   const [altCitiesLoading, setAltCitiesLoading] = useState(false);
@@ -1501,6 +1502,7 @@ function App() {
             if (prefs.city_name) setSelectedCity({ slug: prefs.city_slug, name: prefs.city_name });
             setSelectedGroup(prefs.queue_group);
             setOnboarded(true);
+            setHomeConfigured(true);
             localStorage.setItem('onboarded', '1');
           }
           // Restore the second location if it's configured.
@@ -1669,7 +1671,7 @@ function App() {
           tgUser={tgUser}
           notifyEnabled={notifyEnabled} setNotifyEnabled={setNotifyEnabled}
           notifyMinutes={notifyMinutes} setNotifyMinutes={setNotifyMinutes}
-          onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); setView('schedule'); }}
+          onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); setHomeConfigured(true); setView('schedule'); }}
         />
       </div>
     );
@@ -2106,7 +2108,7 @@ function App() {
                       {ALL_GROUPS.map((group) => (
                         <button
                           key={group}
-                          onClick={() => { setAltGroup(group); setAltExpanded(false); setActiveLocation('home'); hapticNotification('success'); }}
+                          onClick={() => { setAltGroup(group); hapticImpact('light'); }}
                           className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
                             altGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
                           }`}
@@ -2114,6 +2116,12 @@ function App() {
                       ))}
                     </div>
                   </div>
+                  {altOblast && altCity && altGroup && (
+                    <button
+                      onClick={() => { setAltExpanded(false); setActiveLocation('home'); hapticNotification('success'); }}
+                      className="w-full rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white transition-all hover:scale-[1.02]"
+                    >Прийняти зміни</button>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -2124,7 +2132,7 @@ function App() {
                 <h3 className="text-xs font-bold uppercase tracking-wide text-secondary-c">Основна локація</h3>
               </div>
               {/* Saved and collapsed: show a one-line summary that expands on tap */}
-              {selectedOblast && selectedCity && selectedGroup && !homeExpanded ? (
+              {selectedOblast && selectedCity && selectedGroup && !homeExpanded && homeConfigured ? (
                 <button
                   onClick={() => { setHomeExpanded(true); hapticImpact('light'); }}
                   className="d-card flex w-full items-center gap-2 px-3.5 py-3 text-left transition-all hover:scale-[1.01]"
@@ -2233,7 +2241,7 @@ function App() {
                     {(availableGroups.length > 0 ? availableGroups : ALL_GROUPS).map((group) => (
                       <button
                         key={group}
-                        onClick={() => { setSelectedGroup(group); setHomeExpanded(false); hapticNotification('success'); }}
+                        onClick={() => { setSelectedGroup(group); hapticImpact('light'); }}
                         className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
                           selectedGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
                         }`}
@@ -2242,6 +2250,12 @@ function App() {
                   </div>
                 )}
               </div>
+              {selectedOblast && selectedCity && selectedGroup && (
+                <button
+                  onClick={() => { setHomeExpanded(false); setHomeConfigured(true); hapticNotification('success'); }}
+                  className="w-full rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white transition-all hover:scale-[1.02]"
+                >Прийняти зміни</button>
+              )}
               </div>
               )}
             </div>
@@ -2318,6 +2332,7 @@ function App() {
                   homeBackupRef.current = null;
                   hasSelectionRef.current = false;
                   setHomeExpanded(false);
+                  setHomeConfigured(false);
                   setAltExpanded(false);
                   setAltOblast(null); setAltCity(null); setAltGroup(''); setAltLabel(''); setHomeLabel('');
                   setActiveLocation('home');
