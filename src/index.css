@@ -450,11 +450,16 @@
   0%, 100% { filter: drop-shadow(0 0 3px currentColor); }
   50%      { filter: drop-shadow(0 0 8px currentColor); }
 }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 .fade-in         { animation: fadeIn 0.45s cubic-bezier(0.25, 1, 0.5, 1) both; }
 .fade-in-menu    { animation: fadeIn 0.2s cubic-bezier(0.25, 1, 0.5, 1) both; }
 .fade-in-scale   { animation: fadeInScale 0.4s cubic-bezier(0.25, 1, 0.5, 1) both; }
 .fade-in-right   { animation: fadeInRight 0.4s cubic-bezier(0.25, 1, 0.5, 1) both; }
+.fade-in-up      { animation: fadeInUp 0.4s cubic-bezier(0.25, 1, 0.5, 1) both; }
 .fade-in-delay-1 { animation: fadeIn 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.06s both; }
 .fade-in-delay-2 { animation: fadeIn 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.12s both; }
 .fade-in-delay-3 { animation: fadeIn 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.18s both; }

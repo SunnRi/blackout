@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET") {
       const { data, error } = await supabase
         .from("user_preferences")
-        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, active_location")
+        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, alt_label, active_location")
         .eq("tg_user_id", user.id)
         .maybeSingle();
       if (error) throw error;
@@ -139,12 +139,17 @@ Deno.serve(async (req: Request) => {
       if (typeof patch.alt_queue_group === "string" && /^[\d.]{1,8}$/.test(patch.alt_queue_group)) {
         clean.alt_queue_group = patch.alt_queue_group;
       }
+      if (typeof patch.alt_label === "string") {
+        const trimmed = patch.alt_label.trim().slice(0, 24).replace(/[<>&]/g, "");
+        clean.alt_label = trimmed.length > 0 ? trimmed : null;
+      }
       if (patch.alt_city_slug === null && patch.alt_oblast_slug === null) {
         // Explicit reset of the second location.
         clean.alt_oblast_slug = null;
         clean.alt_city_slug = null;
         clean.alt_city_name = null;
         clean.alt_queue_group = null;
+        clean.alt_label = null;
         clean.active_location = "home";
       }
       if (patch.active_location === "home" || patch.active_location === "work") {
@@ -179,7 +184,7 @@ Deno.serve(async (req: Request) => {
       // a reload. Also fetch per-city seen state for the user's current city.
       const { data: fresh } = await supabase
         .from("user_preferences")
-        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, active_location")
+        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, alt_label, active_location")
         .eq("tg_user_id", user.id)
         .maybeSingle();
       const freshPrefs = fresh as { oblast_slug: string | null; city_slug: string | null } | null;

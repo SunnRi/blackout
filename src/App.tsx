@@ -1065,6 +1065,98 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
 type View = 'schedule' | 'changes' | 'settings';
 type DayTab = 'today' | 'tomorrow';
 
+type TourStep = {
+  icon: typeof Zap;
+  title: string;
+  text: string;
+  accent: string;
+};
+
+const TOUR_STEPS: TourStep[] = [
+  {
+    icon: Zap,
+    title: 'Статус світла',
+    text: 'Головний екран завжди показує, чи є світло зараз, і коли включать або відключать наступного разу.',
+    accent: 'from-emerald-500 to-teal-500',
+  },
+  {
+    icon: Clock,
+    title: 'Графік на день',
+    text: 'Таймлайн показує всі години доби: зелені — світло є, червоні — відключення. Перемикайтеся між «Сьогодні» і «Завтра».',
+    accent: 'from-blue-500 to-cyan-500',
+  },
+  {
+    icon: History,
+    title: 'Оновлення графіка',
+    text: 'Коли енергетики змінюють графік — побачите що саме змінилося тут. Про зміни повідомить і Telegram-бот.',
+    accent: 'from-amber-500 to-orange-500',
+  },
+  {
+    icon: Settings,
+    title: 'Налаштування',
+    text: 'Оберіть область, місто і чергу, тему оформлення та сповіщення. Усе синхронізується з ботом.',
+    accent: 'from-slate-500 to-slate-600',
+  },
+  {
+    icon: Plus,
+    title: 'Друга локація',
+    text: 'У налаштуваннях можна додати другу локацію — наприклад, роботу. Між «Дім» і другою адресою перемикайтеся вкладками на головному екрані.',
+    accent: 'from-violet-500 to-fuchsia-500',
+  },
+];
+
+function GuidedTour({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) {
+  const [step, setStep] = useState(0);
+  const s = TOUR_STEPS[step];
+  const Icon = s.icon;
+  const isLast = step === TOUR_STEPS.length - 1;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center backdrop-blur-md"
+      style={{ background: 'rgba(0,0,0,0.45)' }}
+      onClick={isLast ? onDone : undefined}
+    >
+      <div
+        className="mx-4 mb-10 w-full max-w-sm rounded-3xl border border-white/15 bg-white/10 p-6 shadow-2xl backdrop-blur-2xl fade-in-up"
+        style={{ background: 'color-mix(in srgb, var(--bg-card, #ffffff) 88%, transparent)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${s.accent} shadow-lg`}>
+          <Icon className="h-8 w-8 text-white" />
+        </div>
+        <p className="mb-1 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-c">
+          Крок {step + 1} з {TOUR_STEPS.length}
+        </p>
+        <h3 className="mb-2 text-center text-lg font-bold text-primary-c">{s.title}</h3>
+        <p className="mb-5 text-center text-sm leading-relaxed text-secondary-c">{s.text}</p>
+        <div className="mb-4 flex justify-center gap-1.5">
+          {TOUR_STEPS.map((_, i) => (
+            <span
+              key={i}
+              className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-5 accent-bg' : 'w-1.5 bg-black/15 dark:bg-white/20'}`}
+            />
+          ))}
+        </div>
+        <div className="flex gap-2">
+          {!isLast && (
+            <button
+              onClick={onSkip}
+              className="d-btn rounded-xl px-4 py-3 text-sm font-medium text-secondary-c"
+            >Пропустити</button>
+          )}
+          <button
+            onClick={() => { if (isLast) { onDone(); } else { setStep(step + 1); } hapticImpact('light'); }}
+            className="flex-1 rounded-xl accent-bg px-4 py-3 text-sm font-bold text-white transition-all hover:scale-[1.02]"
+          >
+            {isLast ? 'Почнемо!' : 'Далі'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [view, setView] = useState<View>('schedule');
   const [dayTab, setDayTab] = useState<DayTab>('today');
@@ -1073,6 +1165,8 @@ function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
   const [density, setDensity] = useState<Density>(getInitialDensity);
   const [onboarded, setOnboarded] = useState<boolean>(() => localStorage.getItem('onboarded') === '1');
+  const [tourDone, setTourDone] = useState<boolean>(() => localStorage.getItem('tourDone') === '1');
+  const [tourOpen, setTourOpen] = useState(false);
   const [prefsChecked, setPrefsChecked] = useState(() => !getTelegramUser());
   const [obStep, setObStep] = useState(0);
 
@@ -1098,6 +1192,7 @@ function App() {
   const [altOblast, setAltOblast] = useState<Oblast | null>(null);
   const [altCity, setAltCity] = useState<City | null>(null);
   const [altGroup, setAltGroup] = useState('');
+  const [altLabel, setAltLabel] = useState('');
   const [activeLocation, setActiveLocation] = useState<'home' | 'work'>('home');
   const [altExpanded, setAltExpanded] = useState(false);
   const [altOblastList, setAltOblastList] = useState<Oblast[]>(oblasts);
@@ -1173,6 +1268,20 @@ function App() {
     }
   }, [view, selectedOblast, selectedCity]);
 
+  // Show the guided tour once, right after onboarding lands on the main screen.
+  useEffect(() => {
+    if (onboarded && !tourDone) {
+      const t = setTimeout(() => setTourOpen(true), 700);
+      return () => clearTimeout(t);
+    }
+  }, [onboarded, tourDone]);
+
+  const finishTour = () => {
+    setTourOpen(false);
+    setTourDone(true);
+    localStorage.setItem('tourDone', '1');
+  };
+
   // Apply the deep-linked screen once onboarding state is resolved and the
   // city is restored — the changes view needs oblast + city to render.
   useEffect(() => {
@@ -1236,7 +1345,7 @@ function App() {
     if (!tgUser) return;
     const tg = getTelegramWebApp();
     if (!tg?.initData) return;
-    const key = `${altOblast?.slug ?? ''}|${altCity?.slug ?? ''}|${altGroup}|${activeLocation}`;
+    const key = `${altOblast?.slug ?? ''}|${altCity?.slug ?? ''}|${altGroup}|${altLabel}|${activeLocation}`;
     const timer = setTimeout(async () => {
       const patch: Record<string, unknown> = { active_location: activeLocation };
       if (altOblast && altCity && altGroup) {
@@ -1244,6 +1353,7 @@ function App() {
         patch.alt_city_slug = altCity.slug;
         patch.alt_city_name = altCity.name;
         patch.alt_queue_group = altGroup;
+        patch.alt_label = altLabel.trim() || null;
       }
       try {
         await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
@@ -1254,7 +1364,7 @@ function App() {
       } catch { /* best-effort */ }
     }, 1200);
     return () => clearTimeout(timer);
-  }, [tgUser, altOblast, altCity, altGroup, activeLocation]);
+  }, [tgUser, altOblast, altCity, altGroup, altLabel, activeLocation]);
 
   // Switching location swaps the displayed city/queue from the stored pairs.
   const switchLocation = (target: 'home' | 'work') => {
@@ -1314,6 +1424,7 @@ function App() {
             last_seen_changes_at: string | null;
             alt_oblast_slug: string | null; alt_city_slug: string | null; alt_city_name: string | null; alt_queue_group: string | null;
             active_location: 'home' | 'work' | null;
+            alt_label?: string | null;
           } | null;
           city_seen_at?: string | null;
         };
@@ -1341,6 +1452,7 @@ function App() {
             setAltOblast(altOb);
             if (prefs.alt_city_name && altOb) setAltCity({ slug: prefs.alt_city_slug, name: prefs.alt_city_name });
             setAltGroup(prefs.alt_queue_group);
+            setAltLabel((prefs as { alt_label?: string | null }).alt_label ?? '');
           }
           if (prefs.active_location === 'work') setActiveLocation('work');
         }
@@ -1625,16 +1737,16 @@ function App() {
                   <div className="clock-glow font-mono text-5xl font-bold tracking-tight text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{now.timeString}</div>
                 </div>
 
-                {/* Location switcher — shown once a second location is set */}
+                {/* Location tabs — shown once a second location is set */}
                 {altOblast && altCity && altGroup && (
                   <div className="mb-3 flex justify-center fade-in">
                     <div className="segmented">
                       <button onClick={() => { switchLocation('home'); }}
                         className={`segmented-item px-5 py-1.5 text-sm font-semibold ${activeLocation === 'home' ? 'active text-primary-c' : 'text-secondary-c'}`}
-                      >Дом</button>
+                      >Дім</button>
                       <button onClick={() => { switchLocation('work'); }}
                         className={`segmented-item px-5 py-1.5 text-sm font-semibold ${activeLocation === 'work' ? 'active text-primary-c' : 'text-secondary-c'}`}
-                      >Работа</button>
+                      >{altLabel.trim() || 'Робота'}</button>
                     </div>
                   </div>
                 )}
@@ -1817,7 +1929,7 @@ function App() {
               <div className="mb-1.5 flex items-center justify-between">
                 <h3 className="text-xs font-bold uppercase tracking-wide text-secondary-c">Друга локація (робота)</h3>
                 {altOblast && altCity && altGroup && !altExpanded && (
-                  <button onClick={() => { setAltExpanded(false); setAltOblast(null); setAltCity(null); setAltGroup(''); setActiveLocation('home'); hapticImpact('medium'); }}
+                  <button onClick={() => { setAltExpanded(false); setAltOblast(null); setAltCity(null); setAltGroup(''); setAltLabel(''); setActiveLocation('home'); hapticImpact('medium'); }}
                     className="text-[11px] font-semibold text-red-400 hover:underline">Прибрати</button>
                 )}
               </div>
@@ -1830,7 +1942,18 @@ function App() {
                 </button>
               ) : altExpanded || (altOblast || altCity || altGroup) ? (
                 <div className="d-card space-y-3 px-3.5 py-3">
-                  <p className="text-[11px] text-muted-c">Показуватимемо графік і для неї. Перемикайте між «Дом» і «Работа» на головному екрані.</p>
+                  <p className="text-[11px] text-muted-c">Показуватимемо графік і для неї. Перемикайте вкладками на головному екрані.</p>
+                  <div>
+                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Назва вкладки</p>
+                    <input
+                      type="text"
+                      value={altLabel}
+                      onChange={(e) => setAltLabel(e.target.value)}
+                      maxLength={24}
+                      placeholder="Напр.: Робота, Офіс, Дача..."
+                      className="d-panel w-full rounded-xl px-3 py-2 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                    />
+                  </div>
                   <div>
                     <p className="mb-1 text-[11px] font-semibold text-secondary-c">Область</p>
                     <select
@@ -2033,6 +2156,9 @@ function App() {
             >Готово</button>
           </div>
         )}
+
+        {/* Guided tour overlay (first launch) */}
+        {tourOpen && <GuidedTour onDone={finishTour} onSkip={finishTour} />}
       </div>
     </div>
   );
