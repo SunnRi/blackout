@@ -2126,38 +2126,61 @@ function App() {
             {/* City */}
             <div>
               <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Місто</h3>
-              <div className="relative mb-1.5">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
-                <input
-                  type="text" value={citySearchSettings} onChange={(e) => setCitySearchSettings(e.target.value)}
-                  placeholder="Пошук міста..."
-                  className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
-              </div>
-              <div className="d-panel scroll-touch space-y-0.5 overflow-y-auto overscroll-contain rounded-2xl p-1.5" style={{ height: 'min(260px, 38vh)', WebkitOverflowScrolling: 'touch' }}>
-                {!selectedOblast ? (
-                  <p className="py-3 text-center text-xs text-muted-c">Спочатку оберіть область</p>
-                ) : citiesLoading ? (
-                  <div className="flex items-center justify-center gap-2 py-3 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
-                ) : (
-                  <>
-                    {filteredSettingsCities.map((city) => (
-                      <button
-                        key={city.slug}
-                        onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
-                        className={`flex w-full shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
-                          selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c active:bg-black/5 dark:active:bg-white/5'
-                        }`}
-                      >
-                        <MapPin className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{city.name}</span>
-                        {selectedCity?.slug === city.slug && <Check className="ml-auto h-4 w-4 shrink-0" />}
-                      </button>
-                    ))}
-                    {filteredSettingsCities.length === 0 && <p className="py-3 text-center text-xs text-muted-c">Не знайдено</p>}
-                  </>
-                )}
-              </div>
+              {selectedCity ? (
+                <button
+                  onClick={() => { setSelectedCity(null); setSelectedGroup(''); setCitySearchSettings(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
+                  className="d-panel flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm"
+                >
+                  <MapPin className="h-3.5 w-3.5 shrink-0 accent-c" />
+                  <span className="truncate font-semibold text-primary-c">{selectedCity.name}</span>
+                  <X className="ml-auto h-4 w-4 shrink-0 text-muted-c" />
+                </button>
+              ) : (
+                <>
+                  <div className="relative mb-1.5">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
+                    <input
+                      type="text" value={citySearchSettings}
+                      onChange={(e) => {
+                        setCitySearchSettings(e.target.value);
+                        const q = e.target.value.trim().toLowerCase();
+                        if (q.length >= 2) {
+                          const match = oblasts.find((o) =>
+                            o.name.toLowerCase().startsWith(q.slice(0, 3)) ||
+                            o.name.toLowerCase().includes(q.slice(0, 4))
+                          );
+                          if (match && match.slug !== selectedOblast?.slug) {
+                            setSelectedOblast(match); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null);
+                          }
+                        }
+                      }}
+                      placeholder="Почніть вводити назву міста..."
+                      className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                    />
+                  </div>
+                  {!selectedOblast ? (
+                    <p className="py-1.5 text-center text-xs text-muted-c">Оберіть область або введіть назву міста</p>
+                  ) : citiesLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-2 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
+                  ) : (
+                    <div className="d-panel max-h-32 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl p-1.5">
+                      {filteredSettingsCities
+                        .slice(0, 30)
+                        .map((city) => (
+                          <button
+                            key={city.slug}
+                            onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-secondary-c transition-all active:bg-black/5 dark:active:bg-white/5"
+                          >
+                            <MapPin className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{city.name}</span>
+                          </button>
+                        ))}
+                      {filteredSettingsCities.length === 0 && <p className="py-2 text-center text-xs text-muted-c">Не знайдено</p>}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Queue */}
