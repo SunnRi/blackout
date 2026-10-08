@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET") {
       const { data, error } = await supabase
         .from("user_preferences")
-        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, alt_label, active_location")
+        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, alt_label, home_label, active_location")
         .eq("tg_user_id", user.id)
         .maybeSingle();
       if (error) throw error;
@@ -143,6 +143,10 @@ Deno.serve(async (req: Request) => {
         const trimmed = patch.alt_label.trim().slice(0, 24).replace(/[<>&]/g, "");
         clean.alt_label = trimmed.length > 0 ? trimmed : null;
       }
+      if (typeof patch.home_label === "string") {
+        const trimmed = patch.home_label.trim().slice(0, 24).replace(/[<>&]/g, "");
+        clean.home_label = trimmed.length > 0 ? trimmed : null;
+      }
       if (patch.alt_city_slug === null && patch.alt_oblast_slug === null) {
         // Explicit reset of the second location.
         clean.alt_oblast_slug = null;
@@ -184,7 +188,7 @@ Deno.serve(async (req: Request) => {
       // a reload. Also fetch per-city seen state for the user's current city.
       const { data: fresh } = await supabase
         .from("user_preferences")
-        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, alt_label, active_location")
+        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, alt_label, home_label, active_location")
         .eq("tg_user_id", user.id)
         .maybeSingle();
       const freshPrefs = fresh as { oblast_slug: string | null; city_slug: string | null } | null;

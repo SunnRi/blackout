@@ -1247,6 +1247,7 @@ function App() {
   const [altCity, setAltCity] = useState<City | null>(null);
   const [altGroup, setAltGroup] = useState('');
   const [altLabel, setAltLabel] = useState('');
+  const [homeLabel, setHomeLabel] = useState('');
   const [activeLocation, setActiveLocation] = useState<'home' | 'work'>('home');
   const [altExpanded, setAltExpanded] = useState(false);
   const [altOblastList, setAltOblastList] = useState<Oblast[]>(oblasts);
@@ -1399,9 +1400,9 @@ function App() {
     if (!tgUser) return;
     const tg = getTelegramWebApp();
     if (!tg?.initData) return;
-    const key = `${altOblast?.slug ?? ''}|${altCity?.slug ?? ''}|${altGroup}|${altLabel}|${activeLocation}`;
+    const key = `${altOblast?.slug ?? ''}|${altCity?.slug ?? ''}|${altGroup}|${altLabel}|${homeLabel}|${activeLocation}`;
     const timer = setTimeout(async () => {
-      const patch: Record<string, unknown> = { active_location: activeLocation };
+      const patch: Record<string, unknown> = { active_location: activeLocation, home_label: homeLabel.trim() || null };
       if (altOblast && altCity && altGroup) {
         patch.alt_oblast_slug = altOblast.slug;
         patch.alt_city_slug = altCity.slug;
@@ -1418,7 +1419,7 @@ function App() {
       } catch { /* best-effort */ }
     }, 1200);
     return () => clearTimeout(timer);
-  }, [tgUser, altOblast, altCity, altGroup, altLabel, activeLocation]);
+  }, [tgUser, altOblast, altCity, altGroup, altLabel, homeLabel, activeLocation]);
 
   // Switching location swaps the displayed city/queue from the stored pairs.
   const switchLocation = (target: 'home' | 'work') => {
@@ -1479,6 +1480,7 @@ function App() {
             alt_oblast_slug: string | null; alt_city_slug: string | null; alt_city_name: string | null; alt_queue_group: string | null;
             active_location: 'home' | 'work' | null;
             alt_label?: string | null;
+            home_label?: string | null;
           } | null;
           city_seen_at?: string | null;
         };
@@ -1507,6 +1509,7 @@ function App() {
             if (prefs.alt_city_name && altOb) setAltCity({ slug: prefs.alt_city_slug, name: prefs.alt_city_name });
             setAltGroup(prefs.alt_queue_group);
             setAltLabel((prefs as { alt_label?: string | null }).alt_label ?? '');
+            setHomeLabel((prefs as { home_label?: string | null }).home_label ?? '');
           }
           if (prefs.active_location === 'work') setActiveLocation('work');
         }
@@ -1797,7 +1800,7 @@ function App() {
                     <div className="segmented">
                       <button onClick={() => { switchLocation('home'); }}
                         className={`segmented-item px-5 py-1.5 text-sm font-semibold ${activeLocation === 'home' ? 'active text-primary-c' : 'text-secondary-c'}`}
-                      >Дім</button>
+                      >{homeLabel.trim() || 'Дім'}</button>
                       <button onClick={() => { switchLocation('work'); }}
                         className={`segmented-item px-5 py-1.5 text-sm font-semibold ${activeLocation === 'work' ? 'active text-primary-c' : 'text-secondary-c'}`}
                       >{altLabel.trim() || 'Робота'}</button>
@@ -1995,10 +1998,10 @@ function App() {
                   <Plus className="h-4 w-4" /> Додати другу локацію
                 </button>
               ) : altExpanded || (altOblast || altCity || altGroup) ? (
-                <div className="space-y-3">
+                <div className="d-card space-y-3 px-3.5 py-3">
                   <p className="text-[11px] text-muted-c">Показуватимемо графік і для неї. Перемикайте вкладками на головному екрані.</p>
                   <div>
-                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Назва вкладки</h3>
+                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Назва вкладки</p>
                     <input
                       type="text"
                       value={altLabel}
@@ -2009,7 +2012,7 @@ function App() {
                     />
                   </div>
                   <div>
-                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Область</h3>
+                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Область</p>
                     <select
                       value={altOblast?.slug ?? ''}
                       onChange={(e) => {
@@ -2023,7 +2026,7 @@ function App() {
                     </select>
                   </div>
                   <div>
-                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Місто</h3>
+                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Місто</p>
                     {altCity ? (
                       <button
                         onClick={() => { setAltCity(null); setAltGroup(''); setAltCitySearch(''); hapticImpact('light'); }}
@@ -2084,7 +2087,7 @@ function App() {
                     )}
                   </div>
                   <div>
-                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Черга</h3>
+                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Черга</p>
                     <div className="grid grid-cols-6 gap-1">
                       {ALL_GROUPS.map((group) => (
                         <button
@@ -2107,10 +2110,23 @@ function App() {
               ) : null}
             </div>
 
-            {/* Oblast */}
-            <div>
-              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Область</h3>
-              <select
+            {/* Home location — same card style as the second location */}
+            <div className="d-card space-y-3 px-3.5 py-3">
+              <p className="text-[11px] text-muted-c">Основна локація. Показується на головному екрані за замовчуванням.</p>
+              <div>
+                <p className="mb-1 text-[11px] font-semibold text-secondary-c">Назва вкладки</p>
+                <input
+                  type="text"
+                  value={homeLabel}
+                  onChange={(e) => setHomeLabel(e.target.value)}
+                  maxLength={24}
+                  placeholder="Напр.: Дім, Квартира..."
+                  className="d-panel w-full rounded-xl px-3 py-2 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+              </div>
+              <div>
+                <p className="mb-1 text-[11px] font-semibold text-secondary-c">Область</p>
+                <select
                 value={selectedOblast?.slug ?? ''}
                 onChange={(e) => {
                   const oblast = oblasts.find((o) => o.slug === e.target.value);
@@ -2121,86 +2137,85 @@ function App() {
                 <option value="" disabled>Оберіть область...</option>
                 {oblasts.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
               </select>
-            </div>
+              </div>
 
-            {/* City */}
-            <div>
-              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Місто</h3>
-              {selectedCity ? (
-                <button
-                  onClick={() => { setSelectedCity(null); setSelectedGroup(''); setCitySearchSettings(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
-                  className="d-panel flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm"
-                >
-                  <MapPin className="h-3.5 w-3.5 shrink-0 accent-c" />
-                  <span className="truncate font-semibold text-primary-c">{selectedCity.name}</span>
-                  <X className="ml-auto h-4 w-4 shrink-0 text-muted-c" />
-                </button>
-              ) : (
-                <>
-                  <div className="relative mb-1.5">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
-                    <input
-                      type="text" value={citySearchSettings}
-                      onChange={(e) => {
-                        setCitySearchSettings(e.target.value);
-                        const q = e.target.value.trim().toLowerCase();
-                        if (q.length >= 2) {
-                          const match = oblasts.find((o) =>
-                            o.name.toLowerCase().startsWith(q.slice(0, 3)) ||
-                            o.name.toLowerCase().includes(q.slice(0, 4))
-                          );
-                          if (match && match.slug !== selectedOblast?.slug) {
-                            setSelectedOblast(match); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null);
+              <div>
+                <p className="mb-1 text-[11px] font-semibold text-secondary-c">Місто</p>
+                {selectedCity ? (
+                  <button
+                    onClick={() => { setSelectedCity(null); setSelectedGroup(''); setCitySearchSettings(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
+                    className="d-panel flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm"
+                  >
+                    <MapPin className="h-3.5 w-3.5 shrink-0 accent-c" />
+                    <span className="truncate font-semibold text-primary-c">{selectedCity.name}</span>
+                    <X className="ml-auto h-4 w-4 shrink-0 text-muted-c" />
+                  </button>
+                ) : (
+                  <>
+                    <div className="relative mb-1.5">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
+                      <input
+                        type="text" value={citySearchSettings}
+                        onChange={(e) => {
+                          setCitySearchSettings(e.target.value);
+                          const q = e.target.value.trim().toLowerCase();
+                          if (q.length >= 2) {
+                            const match = oblasts.find((o) =>
+                              o.name.toLowerCase().startsWith(q.slice(0, 3)) ||
+                              o.name.toLowerCase().includes(q.slice(0, 4))
+                            );
+                            if (match && match.slug !== selectedOblast?.slug) {
+                              setSelectedOblast(match); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null);
+                            }
                           }
-                        }
-                      }}
-                      placeholder="Почніть вводити назву міста..."
-                      className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
-                    />
-                  </div>
-                  {!selectedOblast ? (
-                    <p className="py-1.5 text-center text-xs text-muted-c">Оберіть область або введіть назву міста</p>
-                  ) : citiesLoading ? (
-                    <div className="flex items-center justify-center gap-2 py-2 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
-                  ) : (
-                    <div className="d-panel max-h-32 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl p-1.5">
-                      {filteredSettingsCities
-                        .slice(0, 30)
-                        .map((city) => (
-                          <button
-                            key={city.slug}
-                            onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
-                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-secondary-c transition-all active:bg-black/5 dark:active:bg-white/5"
-                          >
-                            <MapPin className="h-3.5 w-3.5 shrink-0" />
-                            <span className="truncate">{city.name}</span>
-                          </button>
-                        ))}
-                      {filteredSettingsCities.length === 0 && <p className="py-2 text-center text-xs text-muted-c">Не знайдено</p>}
+                        }}
+                        placeholder="Почніть вводити назву міста..."
+                        className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                      />
                     </div>
-                  )}
-                </>
-              )}
-            </div>
+                    {!selectedOblast ? (
+                      <p className="py-1.5 text-center text-xs text-muted-c">Оберіть область або введіть назву міста</p>
+                    ) : citiesLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-2 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
+                    ) : (
+                      <div className="d-panel max-h-32 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl p-1.5">
+                        {filteredSettingsCities
+                          .slice(0, 30)
+                          .map((city) => (
+                            <button
+                              key={city.slug}
+                              onClick={() => { setSelectedCity(city); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }}
+                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-secondary-c transition-all active:bg-black/5 dark:active:bg-white/5"
+                            >
+                              <MapPin className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{city.name}</span>
+                            </button>
+                          ))}
+                        {filteredSettingsCities.length === 0 && <p className="py-2 text-center text-xs text-muted-c">Не знайдено</p>}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
 
-            {/* Queue */}
-            <div>
-              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Черга</h3>
-              {scheduleLoading ? (
-                <div className="flex items-center gap-2 py-2 text-sm text-secondary-c"><Loader2 className="h-4 w-4 animate-spin" /> Завантаження...</div>
-              ) : (
-                <div className="grid grid-cols-6 gap-1">
-                  {(availableGroups.length > 0 ? availableGroups : ALL_GROUPS).map((group) => (
-                    <button
-                      key={group}
-                      onClick={() => { setSelectedGroup(group); hapticImpact('light'); }}
-                      className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
-                        selectedGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
-                      }`}
-                    >{group}</button>
-                  ))}
-                </div>
-              )}
+              <div>
+                <p className="mb-1 text-[11px] font-semibold text-secondary-c">Черга</p>
+                {scheduleLoading ? (
+                  <div className="flex items-center gap-2 py-2 text-sm text-secondary-c"><Loader2 className="h-4 w-4 animate-spin" /> Завантаження...</div>
+                ) : (
+                  <div className="grid grid-cols-6 gap-1">
+                    {(availableGroups.length > 0 ? availableGroups : ALL_GROUPS).map((group) => (
+                      <button
+                        key={group}
+                        onClick={() => { setSelectedGroup(group); hapticImpact('light'); }}
+                        className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
+                          selectedGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
+                        }`}
+                      >{group}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Notifications */}
