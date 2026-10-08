@@ -1250,6 +1250,7 @@ function App() {
   const [homeLabel, setHomeLabel] = useState('');
   const [activeLocation, setActiveLocation] = useState<'home' | 'work'>('home');
   const [altExpanded, setAltExpanded] = useState(false);
+  const [homeExpanded, setHomeExpanded] = useState(false);
   const [altOblastList, setAltOblastList] = useState<Oblast[]>(oblasts);
   const [altCities, setAltCities] = useState<City[]>([]);
   const [altCitiesLoading, setAltCitiesLoading] = useState(false);
@@ -1990,7 +1991,20 @@ function App() {
                     className="text-[11px] font-semibold text-red-400 hover:underline">Прибрати</button>
                 )}
               </div>
-              {!altOblast && !altCity && !altGroup && !altExpanded ? (
+              {/* Saved and collapsed: show a one-line summary that expands on tap */}
+              {altOblast && altCity && altGroup && !altExpanded ? (
+                <button
+                  onClick={() => { setAltExpanded(true); hapticImpact('light'); }}
+                  className="d-card flex w-full items-center gap-2 px-3.5 py-3 text-left transition-all hover:scale-[1.01]"
+                >
+                  <MapPin className="h-4 w-4 shrink-0 accent-c" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-primary-c">{altLabel.trim() || 'Робота'} · {altCity.name}</span>
+                    <span className="block truncate text-[11px] text-muted-c">{altOblast.name} · черга {altGroup}</span>
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-c" />
+                </button>
+              ) : !altOblast && !altCity && !altGroup && !altExpanded ? (
                 <button
                   onClick={() => { setAltExpanded(true); hapticImpact('light'); }}
                   className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-secondary-c transition-all hover:scale-[1.01]"
@@ -2104,40 +2118,58 @@ function App() {
                     <button
                       onClick={() => { setAltExpanded(false); setActiveLocation('home'); hapticNotification('success'); }}
                       className="w-full rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white transition-all hover:scale-[1.02]"
-                    >Зберегти другу локацію</button>
+                    >Згорнути</button>
                   )}
                 </div>
               ) : null}
             </div>
 
             {/* Home location — same card style as the second location */}
-            <div className="d-card space-y-3 px-3.5 py-3">
-              <p className="text-[11px] text-muted-c">Основна локація. Показується на головному екрані за замовчуванням.</p>
-              <div>
-                <p className="mb-1 text-[11px] font-semibold text-secondary-c">Назва вкладки</p>
-                <input
-                  type="text"
-                  value={homeLabel}
-                  onChange={(e) => setHomeLabel(e.target.value)}
-                  maxLength={24}
-                  placeholder="Напр.: Дім, Квартира..."
-                  className="d-panel w-full rounded-xl px-3 py-2 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-secondary-c">Основна локація</h3>
               </div>
-              <div>
-                <p className="mb-1 text-[11px] font-semibold text-secondary-c">Область</p>
-                <select
-                value={selectedOblast?.slug ?? ''}
-                onChange={(e) => {
-                  const oblast = oblasts.find((o) => o.slug === e.target.value);
-                  if (oblast) { setSelectedOblast(oblast); setSelectedCity(null); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }
-                }}
-                className="d-panel w-full appearance-none rounded-xl px-3 py-2 text-sm text-primary-c outline-none focus:ring-2 focus:ring-blue-500/40"
-              >
-                <option value="" disabled>Оберіть область...</option>
-                {oblasts.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
-              </select>
-              </div>
+              {/* Saved and collapsed: show a one-line summary that expands on tap */}
+              {selectedOblast && selectedCity && selectedGroup && !homeExpanded ? (
+                <button
+                  onClick={() => { setHomeExpanded(true); hapticImpact('light'); }}
+                  className="d-card flex w-full items-center gap-2 px-3.5 py-3 text-left transition-all hover:scale-[1.01]"
+                >
+                  <MapPin className="h-4 w-4 shrink-0 accent-c" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-primary-c">{homeLabel.trim() || 'Дім'} · {selectedCity.name}</span>
+                    <span className="block truncate text-[11px] text-muted-c">{selectedOblast.name} · черга {selectedGroup}</span>
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-c" />
+                </button>
+              ) : (
+              <div className="d-card space-y-3 px-3.5 py-3">
+                <p className="text-[11px] text-muted-c">Основна локація. Показується на головному екрані за замовчуванням.</p>
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold text-secondary-c">Назва вкладки</p>
+                  <input
+                    type="text"
+                    value={homeLabel}
+                    onChange={(e) => setHomeLabel(e.target.value)}
+                    maxLength={24}
+                    placeholder="Напр.: Дім, Квартира..."
+                    className="d-panel w-full rounded-xl px-3 py-2 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold text-secondary-c">Область</p>
+                  <select
+                    value={selectedOblast?.slug ?? ''}
+                    onChange={(e) => {
+                      const oblast = oblasts.find((o) => o.slug === e.target.value);
+                      if (oblast) { setSelectedOblast(oblast); setSelectedCity(null); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null); hapticImpact('light'); }
+                    }}
+                    className="d-panel w-full appearance-none rounded-xl px-3 py-2 text-sm text-primary-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                  >
+                    <option value="" disabled>Оберіть область...</option>
+                    {oblasts.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
+                  </select>
+                </div>
 
               <div>
                 <p className="mb-1 text-[11px] font-semibold text-secondary-c">Місто</p>
@@ -2216,6 +2248,14 @@ function App() {
                   </div>
                 )}
               </div>
+              {selectedOblast && selectedCity && selectedGroup && (
+                <button
+                  onClick={() => { setHomeExpanded(false); hapticNotification('success'); }}
+                  className="w-full rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white transition-all hover:scale-[1.02]"
+                >Згорнути</button>
+              )}
+              </div>
+              )}
             </div>
 
             {/* Notifications */}
