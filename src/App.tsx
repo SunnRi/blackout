@@ -2349,16 +2349,16 @@ function App() {
                         target="_blank"
                         rel="noreferrer"
                         data-tour="contact-dev"
-                        className="d-btn flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-semibold text-secondary-c transition-colors hover:text-primary-c"
+                        className="d-btn flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[8px] font-semibold text-secondary-c transition-colors hover:text-primary-c"
                         aria-label="Повідомити розробнику про проблему"
                       >
                         <MessageCircle className="h-3.5 w-3.5 accent-c" />
                        Написати розробнику
                       </a>
                       <div className="flex shrink-0 items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 dark:bg-white/8">
-                        <span className="text-[10px] leading-none text-muted-c">Зроблено з</span>
+                        <span className="text-[8px] leading-none text-muted-c">Зроблено з</span>
                         <Heart className="h-2.5 w-2.5 shrink-0 fill-current text-red-400" />
-                        <span className="text-[10px] leading-none text-muted-c">, by wt.rvng</span>
+                        <span className="text-[8px] leading-none text-muted-c">, by wt.rvng</span>
                       </div>
                     </div>
                   </div>
