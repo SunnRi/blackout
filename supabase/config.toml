@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.user-prefs]
 verify_jwt = false
+
+[functions.admin-stats]
+verify_jwt = false

@@ -5,7 +5,7 @@ import {
   Sun, Moon, Clock, Info,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
   LayoutGrid, Gauge, Layers, History, Heart, ShieldCheck, ChevronDown,
-  Plus, Minus, MoveRight, X,
+  Plus, Minus, MoveRight, X, BarChart3, Users, Map, AlertTriangle,
 } from 'lucide-react';
 import { supabase, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -1062,7 +1062,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
 }
 
 // ─── Main App ─────────────────────────────────────────────────
-type View = 'schedule' | 'changes' | 'settings';
+type View = 'schedule' | 'changes' | 'settings' | 'admin';
 type DayTab = 'today' | 'tomorrow';
 
 type TourStep = {
@@ -1217,6 +1217,71 @@ function GuidedTour({ onDone, onSkip, goToView }: { onDone: () => void; onSkip: 
   );
 }
 
+type AdminStats = {
+  generatedAt: string;
+  users: { total: number; activeLast7Days: number; notificationsEnabled: number };
+  regions: { name: string; users: number }[];
+  cities: { name: string; users: number }[];
+  schedules: { trackedCities: number; fresh: number; stale: number; lastCheckedAt: string | null };
+};
+
+function AdminView({ initData, onBack }: { initData: string; onBack: () => void }) {
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-stats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ initData }),
+      });
+      if (!response.ok) throw new Error('stats request failed');
+      const data = await response.json() as AdminStats;
+      if (!data.users || !Array.isArray(data.regions) || !data.schedules) throw new Error('invalid stats');
+      setStats(data);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, [initData]);
+
+  if (loading) {
+    return <div className="flex flex-col items-center justify-center py-20 text-secondary-c"><Loader2 className="h-8 w-8 animate-spin accent-c" /><p className="mt-3 text-sm">Завантаження статистики...</p></div>;
+  }
+  if (error || !stats) {
+    return <div className="d-card p-6 text-center"><AlertTriangle className="mx-auto h-8 w-8 text-amber-500" /><p className="mt-3 text-sm text-secondary-c">Не вдалося завантажити статистику</p><button onClick={() => void load()} className="mt-4 rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white">Повторити</button></div>;
+  }
+
+  return (
+    <div className="fade-in space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          { label: 'Користувачів', value: stats.users.total, icon: Users },
+          { label: 'Активні за 7 днів', value: stats.users.activeLast7Days, icon: BarChart3 },
+          { label: 'Зі сповіщеннями', value: stats.users.notificationsEnabled, icon: Bell },
+          { label: 'Міст перевіряється', value: stats.schedules.trackedCities, icon: Map },
+        ].map(({ label, value, icon: Icon }) => (
+          <div key={label} className="d-card p-3.5"><Icon className="h-4 w-4 accent-c" /><p className="mt-2 text-2xl font-bold text-primary-c">{value}</p><p className="text-[11px] text-secondary-c">{label}</p></div>
+        ))}
+      </div>
+      <div className="d-card p-4">
+        <div className="flex items-center justify-between"><h2 className="text-sm font-bold text-primary-c">Актуальність графіків</h2><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${stats.schedules.stale ? 'bg-amber-500/15 text-amber-600' : 'bg-emerald-500/15 text-emerald-600'}`}>{stats.schedules.stale ? `${stats.schedules.stale} застаріли` : 'Усе свіже'}</span></div>
+        <div className="mt-3 flex gap-2 text-xs"><span className="flex-1 rounded-lg bg-emerald-500/12 px-3 py-2 text-emerald-600">Свіжі: <b>{stats.schedules.fresh}</b></span><span className="flex-1 rounded-lg bg-amber-500/12 px-3 py-2 text-amber-600">Проблемні: <b>{stats.schedules.stale}</b></span></div>
+      </div>
+      <div className="d-card p-4"><h2 className="mb-3 text-sm font-bold text-primary-c">Користувачі за областями</h2>{stats.regions.length === 0 ? <p className="text-sm text-secondary-c">Даних ще немає</p> : <div className="space-y-2">{stats.regions.map((item) => <div key={item.name} className="flex items-center justify-between text-sm"><span className="truncate text-secondary-c">{item.name}</span><b className="text-primary-c">{item.users}</b></div>)}</div>}</div>
+      <div className="d-card p-4"><h2 className="mb-3 text-sm font-bold text-primary-c">Найпопулярніші міста</h2>{stats.cities.length === 0 ? <p className="text-sm text-secondary-c">Даних ще немає</p> : <div className="space-y-2">{stats.cities.slice(0, 10).map((item) => <div key={item.name} className="flex items-center justify-between text-sm"><span className="truncate text-secondary-c">{item.name}</span><b className="text-primary-c">{item.users}</b></div>)}</div>}</div>
+      <button onClick={onBack} className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-secondary-c"><ChevronLeft className="h-4 w-4" /> До графіка</button>
+    </div>
+  );
+}
+
 function App() {
   const [view, setView] = useState<View>('schedule');
   const [dayTab, setDayTab] = useState<DayTab>('today');
@@ -1264,6 +1329,7 @@ function App() {
   const [altCitySearch, setAltCitySearch] = useState('');
 
   const tgUser = useMemo(() => getTelegramUser(), []);
+  const isAdmin = tgUser?.id === 87003816;
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedCityKeyRef = useRef<string>('');
   const homeBackupRef = useRef<{ oblast: Oblast | null; city: City | null; group: string } | null>(null);
@@ -1705,7 +1771,7 @@ function App() {
               </div>
               <div>
                 <h1 className="text-lg font-bold leading-tight text-primary-c">
-                  {view === 'schedule' ? 'Графік світла' : view === 'changes' ? 'Оновлення графіка' : 'Налаштування'}
+                  {view === 'schedule' ? 'Графік світла' : view === 'changes' ? 'Оновлення графіка' : view === 'admin' ? 'Адмінка' : 'Налаштування'}
                 </h1>
                 {selectedCity && view !== 'settings' ? (
                   <button onClick={() => { setView('settings'); hapticImpact('light'); }}
@@ -1780,6 +1846,12 @@ function App() {
                       <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
                     </span>
                   )}
+                </button>
+              )}
+              {view === 'schedule' && isAdmin && (
+                <button onClick={() => { setView('admin'); hapticImpact('light'); }}
+                  className="d-btn flex h-9 w-9 items-center justify-center rounded-full" aria-label="Адмінка" title="Адмінка">
+                  <BarChart3 className="h-4 w-4 accent-c" />
                 </button>
               )}
               {view === 'schedule' && (
@@ -1964,6 +2036,9 @@ function App() {
             </button>
           </div>
         )}
+
+        {/* ── ADMIN VIEW ── */}
+        {view === 'admin' && isAdmin && <AdminView initData={getTelegramWebApp()?.initData ?? ''} onBack={() => setView('schedule')} />}
 
         {/* ── SETTINGS VIEW ── */}
         {view === 'settings' && (
