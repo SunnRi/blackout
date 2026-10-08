@@ -5,7 +5,7 @@ import {
   Sun, Moon, Clock, Info,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
   LayoutGrid, Gauge, Layers, History, Heart, ShieldCheck, ChevronDown,
-  Plus, Minus, MoveRight, X, BarChart3, Users, MapIcon, AlertTriangle,
+  Plus, Minus, MoveRight, X, BarChart3, Users, MapIcon, AlertTriangle, MessageCircle,
 } from 'lucide-react';
 import { supabase, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -2144,10 +2144,22 @@ function App() {
                         Дані з відкритих джерел.<br />Лише інформаційні, для особистого використання.
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 dark:bg-white/8">
-                      <span className="text-[10px] leading-none text-muted-c">Зроблено з</span>
-                      <Heart className="h-2.5 w-2.5 shrink-0 fill-current text-red-400" />
-                      <span className="text-[10px] leading-none text-muted-c">, by wt.rvng</span>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href="https://t.me/wt.rvng"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="d-btn flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-semibold text-secondary-c transition-colors hover:text-primary-c"
+                        aria-label="Повідомити розробнику про проблему"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5 accent-c" />
+                        Повідомити про проблему
+                      </a>
+                      <div className="flex shrink-0 items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 dark:bg-white/8">
+                        <span className="text-[10px] leading-none text-muted-c">Зроблено з</span>
+                        <Heart className="h-2.5 w-2.5 shrink-0 fill-current text-red-400" />
+                        <span className="text-[10px] leading-none text-muted-c">, by wt.rvng</span>
+                      </div>
                     </div>
                   </div>
                 </footer>
