@@ -5,7 +5,7 @@ import {
   Sun, Moon, Clock, Info,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
   LayoutGrid, Gauge, Layers, History, Heart, ShieldCheck, ChevronDown,
-  Plus, Minus, MoveRight,
+  Plus, Minus, MoveRight, X,
 } from 'lucide-react';
 import { supabase, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -161,7 +161,7 @@ function StatusLine({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const nextOn = getNextOnSlot(slots, now);
 
   return (
-    <div className={`fade-in-scale hover-lift d-card flex items-center gap-2.5 px-4 py-3 ${isOff ? 'pulse-red' : 'pulse-green'}`}>
+    <div className={`fade-in-scale hover-lift d-card flex items-center gap-2.5 px-4 py-3 ${isOff ? 'pulse-red' : 'pulse-green'}`} data-tour="status">
       <div
         className={`h-2.5 w-2.5 shrink-0 rounded-full ${isOff ? 'bg-red-500' : 'bg-emerald-500'}`}
         style={{ boxShadow: isOff ? '0 0 10px rgba(255,59,48,0.7)' : '0 0 10px rgba(52,199,89,0.7)' }}
@@ -181,7 +181,7 @@ function StatusCompact({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const nextOn = getNextOnSlot(slots, now);
 
   return (
-    <div className={`glass-sheen fade-in-scale hover-lift d-card p-4 relative overflow-hidden ${isOff ? 'status-off' : 'status-on'}`}>
+    <div className={`glass-sheen fade-in-scale hover-lift d-card p-4 relative overflow-hidden ${isOff ? 'status-off' : 'status-on'}`} data-tour="status">
       <div className="flex items-center gap-3">
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${isOff ? 'bg-red-500/15' : 'bg-emerald-500/15'}`}>
           {isOff
@@ -233,7 +233,7 @@ function StatusFull({ slots, now }: { slots: Slot[]; now: KyivTime }) {
   const outagesCount = slots.filter((s) => s.type === 'Definite').length;
 
   return (
-    <div className={`fade-in-scale hover-lift d-card p-5 text-center relative overflow-hidden ${isOff ? 'status-off' : 'status-on'}`}>
+    <div className={`fade-in-scale hover-lift d-card p-5 text-center relative overflow-hidden ${isOff ? 'status-off' : 'status-on'}`} data-tour="status">
       <div className={`mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full ${isOff ? 'bg-red-500/15' : 'bg-emerald-500/15'}`}>
         {isOff
           ? <ZapOff className="flicker h-8 w-8 text-red-500" />
@@ -1070,56 +1070,110 @@ type TourStep = {
   title: string;
   text: string;
   accent: string;
+  target: string;
+  view?: View;
 };
 
 const TOUR_STEPS: TourStep[] = [
   {
     icon: Zap,
     title: 'Статус світла',
-    text: 'Головний екран завжди показує, чи є світло зараз, і коли включать або відключать наступного разу.',
+    text: 'Ця картка завжди показує, чи є світло зараз, і коли включать або відключать наступного разу.',
     accent: 'from-emerald-500 to-teal-500',
+    target: '[data-tour="status"]',
   },
   {
     icon: Clock,
     title: 'Графік на день',
-    text: 'Таймлайн показує всі години доби: зелені — світло є, червоні — відключення. Перемикайтеся між «Сьогодні» і «Завтра».',
+    text: 'Тут показані всі години доби: зелені — світло є, червоні — відключення. Перемикайтеся між «Сьогодні» і «Завтра».',
     accent: 'from-blue-500 to-cyan-500',
+    target: '[data-tour="daytabs"],[data-tour="graph"]',
   },
   {
     icon: History,
     title: 'Оновлення графіка',
-    text: 'Коли енергетики змінюють графік — побачите що саме змінилося тут. Про зміни повідомить і Telegram-бот.',
+    text: 'Ця кнопка відкриває історію змін. Коли енергетики змінюють графік — побачите що саме змінилося. Про зміни повідомить і Telegram-бот.',
     accent: 'from-amber-500 to-orange-500',
+    target: '[data-tour="history"]',
   },
   {
     icon: Settings,
     title: 'Налаштування',
-    text: 'Оберіть область, місто і чергу, тему оформлення та сповіщення. Усе синхронізується з ботом.',
+    text: 'Тут обирають область, місто і чергу, тему оформлення та сповіщення. Усе синхронізується з ботом.',
     accent: 'from-slate-500 to-slate-600',
+    target: '[data-tour="settings"]',
   },
   {
     icon: Plus,
     title: 'Друга локація',
-    text: 'У налаштуваннях можна додати другу локацію — наприклад, роботу. Між «Дім» і другою адресою перемикайтеся вкладками на головному екрані.',
+    text: 'У налаштуваннях можна додати другу локацію — наприклад, роботу — і дати вкладці своє ім\u2019я. Між адресами перемикайтеся вкладками на головному екрані.',
     accent: 'from-violet-500 to-fuchsia-500',
+    target: '[data-tour="alt-location"]',
+    view: 'settings',
   },
 ];
 
-function GuidedTour({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) {
+function GuidedTour({ onDone, onSkip, goToView }: { onDone: () => void; onSkip: () => void; goToView: (v: View) => void }) {
   const [step, setStep] = useState(0);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const [cardPos, setCardPos] = useState<{ top: number; left: number } | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const s = TOUR_STEPS[step];
   const Icon = s.icon;
   const isLast = step === TOUR_STEPS.length - 1;
 
+  // Find and highlight the real element for this step. Steps may switch views
+  // first (e.g. the second-location step lands in settings), so measure after
+  // the view has rendered.
+  useEffect(() => {
+    if (s.view) goToView(s.view);
+    let raf = 0;
+    const measure = () => {
+      const el = document.querySelector(s.target) as HTMLElement | null;
+      if (!el) { setRect(null); setCardPos(null); return; }
+      el.scrollIntoView({ block: 'center' });
+      raf = requestAnimationFrame(() => {
+        const r = el.getBoundingClientRect();
+        setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      });
+    };
+    const t = setTimeout(measure, 80);
+    window.addEventListener('resize', measure);
+    return () => { clearTimeout(t); cancelAnimationFrame(raf); window.removeEventListener('resize', measure); };
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Anchor the tooltip next to the highlighted element, clamped to the screen.
+  useEffect(() => {
+    if (!rect) { setCardPos(null); return; }
+    const cw = cardRef.current?.offsetWidth ?? 340;
+    const ch = cardRef.current?.offsetHeight ?? 280;
+    const left = Math.min(Math.max(12, rect.left + rect.width / 2 - cw / 2), Math.max(12, window.innerWidth - cw - 12));
+    const fitsBelow = rect.top + rect.height + 12 + ch <= window.innerHeight - 12;
+    setCardPos({ top: fitsBelow ? rect.top + rect.height + 12 : Math.max(12, rect.top - ch - 12), left });
+  }, [rect, step]);
+
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center backdrop-blur-md"
-      style={{ background: 'rgba(0,0,0,0.45)' }}
+      className="fixed inset-0 z-[60]"
+      style={{ background: rect ? 'transparent' : 'rgba(0,0,0,0.45)' }}
       onClick={isLast ? onDone : undefined}
     >
+      {rect && (
+        <div
+          className="tour-spotlight fixed z-[61]"
+          style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12 }}
+        />
+      )}
       <div
-        className="mx-4 mb-10 w-full max-w-sm rounded-3xl border border-white/15 bg-white/10 p-6 shadow-2xl backdrop-blur-2xl fade-in-up"
-        style={{ background: 'color-mix(in srgb, var(--bg-card, #ffffff) 88%, transparent)' }}
+        ref={cardRef}
+        className="fixed z-[62] rounded-3xl border border-white/15 p-6 shadow-2xl fade-in-up"
+        style={{
+          width: 'min(380px, calc(100vw - 24px))',
+          background: 'color-mix(in srgb, var(--bg-card, #ffffff) 92%, transparent)',
+          ...(cardPos
+            ? { top: cardPos.top, left: cardPos.left }
+            : { bottom: 40, left: '50%', transform: 'translateX(-50%)' }),
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${s.accent} shadow-lg`}>
@@ -1706,7 +1760,7 @@ function App() {
               {view === 'schedule' && selectedCity && (
                 <button onClick={() => { setView('changes'); hapticImpact('light'); }}
                   className="relative d-btn flex h-9 w-9 items-center justify-center rounded-full"
-                  aria-label="Оновлення графіка" title="Оновлення графіка">
+                  aria-label="Оновлення графіка" title="Оновлення графіка" data-tour="history">
                   <History className="h-4 w-4 accent-c" />
                   {unseenChanges && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
@@ -1718,7 +1772,7 @@ function App() {
               )}
               {view === 'schedule' && (
                 <button onClick={() => { setView('settings'); hapticImpact('light'); }}
-                  className="d-btn flex h-9 w-9 items-center justify-center rounded-full">
+                  className="d-btn flex h-9 w-9 items-center justify-center rounded-full" data-tour="settings">
                   <Settings className="h-4 w-4 accent-c" />
                 </button>
               )}
@@ -1791,7 +1845,7 @@ function App() {
 
                 {/* Day tabs — hidden in extended (both days shown) */}
                 {density !== 'extended' && (
-                  <div className="mb-3 flex justify-center fade-in-delay-1">
+                  <div className="mb-3 flex justify-center fade-in-delay-1" data-tour="daytabs">
                     <div className="segmented">
                       <button onClick={() => { setDayTab('today'); hapticImpact('light'); }}
                         className={`segmented-item px-5 py-1.5 text-sm font-semibold ${dayTab === 'today' ? 'active text-primary-c' : 'text-secondary-c'}`}
@@ -1807,7 +1861,7 @@ function App() {
 
                 {/* Graph — standard/extended only */}
                 {density !== 'minimal' && (
-                  <div className="mb-4">
+                  <div className="mb-4" data-tour="graph">
                     {dayTab === 'tomorrow' && displaySlots.length === 0 ? (
                       <div className="d-card flex flex-col items-center justify-center gap-2 py-8 text-center fade-in">
                         <Clock className="h-7 w-7 text-muted-c" />
@@ -1925,7 +1979,7 @@ function App() {
             </div>
 
             {/* Second location (work) */}
-            <div>
+            <div data-tour="alt-location">
               <div className="mb-1.5 flex items-center justify-between">
                 <h3 className="text-xs font-bold uppercase tracking-wide text-secondary-c">Друга локація (робота)</h3>
                 {altOblast && altCity && altGroup && !altExpanded && (
@@ -1970,29 +2024,64 @@ function App() {
                   </div>
                   <div>
                     <p className="mb-1 text-[11px] font-semibold text-secondary-c">Місто</p>
-                    <div className="d-panel max-h-40 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl p-1.5">
-                      {!altOblast ? (
-                        <p className="py-2 text-center text-xs text-muted-c">Спочатку оберіть область</p>
-                      ) : altCitiesLoading ? (
-                        <div className="flex items-center justify-center gap-2 py-2 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
-                      ) : (
-                        altCities
-                          .filter((c) => !altCitySearch.trim() || c.name.toLowerCase().includes(altCitySearch.toLowerCase()))
-                          .map((city) => (
-                            <button
-                              key={city.slug}
-                              onClick={() => { setAltCity(city); setAltGroup(''); hapticImpact('light'); }}
-                              className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
-                                altCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c active:bg-black/5 dark:active:bg-white/5'
-                              }`}
-                            >
-                              <MapPin className="h-3.5 w-3.5 shrink-0" />
-                              <span className="truncate">{city.name}</span>
-                              {altCity?.slug === city.slug && <Check className="ml-auto h-4 w-4 shrink-0" />}
-                            </button>
-                          ))
-                      )}
-                    </div>
+                    {altCity ? (
+                      <button
+                        onClick={() => { setAltCity(null); setAltGroup(''); setAltCitySearch(''); hapticImpact('light'); }}
+                        className="d-panel flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm"
+                      >
+                        <MapPin className="h-3.5 w-3.5 shrink-0 accent-c" />
+                        <span className="truncate font-semibold text-primary-c">{altCity.name}</span>
+                        <X className="ml-auto h-4 w-4 shrink-0 text-muted-c" />
+                      </button>
+                    ) : (
+                      <>
+                        <div className="relative mb-1.5">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
+                          <input
+                            type="text"
+                            value={altCitySearch}
+                            onChange={(e) => {
+                              setAltCitySearch(e.target.value);
+                              if (!altOblast) return;
+                              const q = e.target.value.trim().toLowerCase();
+                              if (q.length >= 2) {
+                                const match = altOblastList.find((o) =>
+                                  o.name.toLowerCase().startsWith(q.slice(0, 3)) ||
+                                  o.name.toLowerCase().includes(q.slice(0, 4))
+                                );
+                                if (match && match.slug !== altOblast.slug) setAltOblast(match);
+                              }
+                            }}
+                            placeholder="Почніть вводити назву міста..."
+                            className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                          />
+                        </div>
+                        {!altOblast ? (
+                          <p className="py-1.5 text-center text-xs text-muted-c">Оберіть область або введіть назву міста</p>
+                        ) : altCitiesLoading ? (
+                          <div className="flex items-center justify-center gap-2 py-2 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
+                        ) : (
+                          <div className="d-panel max-h-32 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl p-1.5">
+                            {altCities
+                              .filter((c) => !altCitySearch.trim() || c.name.toLowerCase().includes(altCitySearch.toLowerCase()))
+                              .slice(0, 30)
+                              .map((city) => (
+                                <button
+                                  key={city.slug}
+                                  onClick={() => { setAltCity(city); setAltGroup(''); hapticImpact('light'); }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-secondary-c transition-all active:bg-black/5 dark:active:bg-white/5"
+                                >
+                                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{city.name}</span>
+                                </button>
+                              ))}
+                            {altCities.filter((c) => !altCitySearch.trim() || c.name.toLowerCase().includes(altCitySearch.toLowerCase())).length === 0 && (
+                              <p className="py-2 text-center text-xs text-muted-c">Не знайдено</p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                   <div>
                     <p className="mb-1 text-[11px] font-semibold text-secondary-c">Черга</p>
@@ -2158,7 +2247,7 @@ function App() {
         )}
 
         {/* Guided tour overlay (first launch) */}
-        {tourOpen && <GuidedTour onDone={finishTour} onSkip={finishTour} />}
+        {tourOpen && <GuidedTour onDone={finishTour} onSkip={finishTour} goToView={(v) => { setView(v); hapticImpact('light'); }} />}
       </div>
     </div>
   );

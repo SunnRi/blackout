@@ -728,3 +728,19 @@ button { -webkit-tap-highlight-color: transparent; }
   100% { opacity: 1; transform: translateX(0); }
 }
 .diff-arrow { animation: diffArrowSlide 0.5s ease-out 0.15s backwards; }
+
+/* Guided-tour spotlight: cuts a rounded hole in a dark veil over the page
+   and pulses a ring around the highlighted element */
+.tour-spotlight {
+  border-radius: 20px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  outline: 2px solid rgba(79, 125, 255, 0.9);
+  animation: tourSpotPulse 2.2s ease-in-out infinite;
+  pointer-events: none;
+  transition: top 0.35s cubic-bezier(0.25, 1, 0.5, 1), left 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+    width 0.35s cubic-bezier(0.25, 1, 0.5, 1), height 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+@keyframes tourSpotPulse {
+  0%, 100% { outline-offset: 0px; outline-color: rgba(79, 125, 255, 0.9); }
+  50%      { outline-offset: 4px; outline-color: rgba(79, 125, 255, 0.45); }
+}
