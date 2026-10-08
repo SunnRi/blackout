@@ -106,7 +106,20 @@ Deno.serve(async (req: Request) => {
     }
 
     if (req.method === "POST") {
-      const bodyObj = body as { patch?: Record<string, unknown>; markChangesSeen?: boolean } | null;
+      const bodyObj = body as { patch?: Record<string, unknown>; markChangesSeen?: boolean; resetAll?: boolean } | null;
+
+      // Full reset: wipe every per-user row so the app and the bot start
+      // over as if the user had never onboarded.
+      if (bodyObj?.resetAll) {
+        await supabase.from("user_preferences").delete().eq("tg_user_id", user.id);
+        await supabase.from("sent_notifications").delete().eq("tg_user_id", user.id);
+        await supabase.from("user_change_views").delete().eq("tg_user_id", user.id);
+        await supabase.from("notification_outbox").delete().eq("tg_user_id", user.id);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const patch = (bodyObj?.patch ?? {}) as Record<string, unknown>;
       const clean: Record<string, unknown> = { updated_at: new Date().toISOString() };
 

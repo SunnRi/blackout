@@ -62,10 +62,10 @@ type UserPref = {
 
 // ── Mini app → bot confirmation (Telegram initData verification) ──
 type MiniAppConfirm = {
-  action: "prefs_saved";
+  action: "prefs_saved" | "reset_all";
   initData: string;
-  city: string;
-  queue: string;
+  city?: string;
+  queue?: string;
 };
 
 // Mini apps stay open for hours; allow up to 24h on initData auth_date.
@@ -105,6 +105,56 @@ async function handlePrefsSaved(confirm: MiniAppConfirm) {
   if (!user) return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
     status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+
+  if (confirm.action === "reset_all") {
+    // Full reset: wipe prefs, notification history and all bot messages,
+    // then send a fresh greeting like it's the very first /start.
+    await supabase.from("user_preferences").delete().eq("tg_user_id", user.id);
+    await supabase.from("sent_notifications").delete().eq("tg_user_id", user.id);
+    await supabase.from("user_change_views").delete().eq("tg_user_id", user.id);
+    await supabase.from("notification_outbox").delete().eq("tg_user_id", user.id);
+
+    const sent = await tgCall("getHistory", { chat_id: user.id, limit: 100 }) as {
+      ok?: boolean; result?: { message_id: number }[];
+    };
+    if (sent?.ok && Array.isArray(sent.result)) {
+      for (const m of sent.result) {
+        await tgCall("deleteMessage", { chat_id: user.id, message_id: m.message_id });
+      }
+    }
+
+    await sendMessage(
+      user.id,
+      `👋 Привіт, <b>${user.first_name ?? "друг"}</b>!
+
+` +
+        `⚡️ <b>Світло Бот</b> — ваш помічник у графіках відключень.
+
+` +
+        `⬇️ Натисніть кнопку <b>«Відкрити графік світла»</b> під цим повідомленням — додаток відкриється одразу.
+` +
+        `(Та сама дія — синя кнопка меню <b>зліва</b> біля поля введення.)
+
+` +
+        `<b>Що я вмію:</b>
+` +
+        `🔔 — попереджаю про відключення заздалегідь
+` +
+        `📡 — повідомляю, якщо графік змінився
+` +
+        `🟢 — показую, чи є світло зараз
+` +
+        `🕒 — показую найближчі відключення
+
+` +
+        `<i>Спочатку оберіть місто та чергу у додатку, потім увімкніть сповіщення 🔔</i>`,
+      startKeyboard(),
+    );
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const queue = String(confirm.queue).replace(/[<>&]/g, "");
   const city = String(confirm.city).replace(/[<>&]/g, "");
   await sendMessage(
@@ -617,7 +667,7 @@ Deno.serve(async (req: Request) => {
       const action = body && typeof body === "object" && "action" in body
         ? (body as { action?: unknown }).action
         : null;
-      if (action !== "prefs_saved") {
+      if (action !== "prefs_saved" && action !== "reset_all") {
         return new Response(
           JSON.stringify({ error: "Unauthorized" }),
           { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -653,7 +703,8 @@ Deno.serve(async (req: Request) => {
     // mini-app confirmations arrive as POSTs to the same function.
     if (
       body && typeof body === "object" && "action" in body &&
-      (body as { action?: unknown }).action === "prefs_saved"
+      ((body as { action?: unknown }).action === "prefs_saved" ||
+        (body as { action?: unknown }).action === "reset_all")
     ) {
       return await handlePrefsSaved(body as MiniAppConfirm);
     }

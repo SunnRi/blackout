@@ -2304,15 +2304,47 @@ function App() {
               </div>
             )}
 
-            {/* Replay onboarding — keep existing selections so the user can
-                just click through and only change what they want */}
+            {/* Replay onboarding — full reset: wipes saved prefs, bot
+                message history and the guided tour, then starts over from
+                the greeting screen. Server-side wipe is verified, so the
+                restore effect can't bring the old settings back. */}
             <button
               onClick={() => {
-                const startStep = !selectedOblast ? 1 : !selectedCity ? 2 : !selectedGroup ? 3 : 1;
-                setObStep(startStep); setOnboarded(false); localStorage.removeItem('onboarded');
-                hapticImpact('light');
+                const doReset = () => {
+                  const tg = getTelegramWebApp();
+                  if (tg?.initData) {
+                    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+                      body: JSON.stringify({ initData: tg.initData, resetAll: true }),
+                    }).catch(() => { /* best-effort */ });
+                    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-bot`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+                      body: JSON.stringify({ action: 'reset_all', initData: tg.initData }),
+                    }).catch(() => { /* best-effort */ });
+                  }
+                  localStorage.removeItem('onboarded');
+                  localStorage.removeItem('tourDone');
+                  loadedCityKeyRef.current = '';
+                  homeBackupRef.current = null;
+                  hasSelectionRef.current = false;
+                  setHomeExpanded(false);
+                  setAltExpanded(false);
+                  setAltOblast(null); setAltCity(null); setAltGroup(''); setAltLabel(''); setHomeLabel('');
+                  setActiveLocation('home');
+                  setSelectedOblast(null); setSelectedCity(null); setSelectedGroup('');
+                  setTodaySchedule(null); setTomorrowSchedule(null);
+                  setCities([]); setCitySearchSettings('');
+                  setTourDone(false);
+                  setObStep(0); setOnboarded(false);
+                  hapticNotification('warning');
+                };
+                if (confirm && confirm('Це видалить усі налаштування, історію змін і повідомлення бота. Продовжити?')) {
+                  doReset();
+                }
               }}
-              className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-secondary-c transition-all hover:scale-[1.01]"
+              className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-red-400 transition-all hover:scale-[1.01]"
             >
               <Sparkles className="h-3.5 w-3.5" /> Пройти налаштування знову
             </button>
