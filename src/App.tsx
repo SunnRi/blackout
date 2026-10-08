@@ -2106,7 +2106,7 @@ function App() {
                       {ALL_GROUPS.map((group) => (
                         <button
                           key={group}
-                          onClick={() => { setAltGroup(group); hapticImpact('light'); }}
+                          onClick={() => { setAltGroup(group); setAltExpanded(false); setActiveLocation('home'); hapticNotification('success'); }}
                           className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
                             altGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
                           }`}
@@ -2114,12 +2114,6 @@ function App() {
                       ))}
                     </div>
                   </div>
-                  {altOblast && altCity && altGroup && (
-                    <button
-                      onClick={() => { setAltExpanded(false); setActiveLocation('home'); hapticNotification('success'); }}
-                      className="w-full rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white transition-all hover:scale-[1.02]"
-                    >Згорнути</button>
-                  )}
                 </div>
               ) : null}
             </div>
@@ -2239,7 +2233,7 @@ function App() {
                     {(availableGroups.length > 0 ? availableGroups : ALL_GROUPS).map((group) => (
                       <button
                         key={group}
-                        onClick={() => { setSelectedGroup(group); hapticImpact('light'); }}
+                        onClick={() => { setSelectedGroup(group); setHomeExpanded(false); hapticNotification('success'); }}
                         className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
                           selectedGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
                         }`}
@@ -2248,12 +2242,6 @@ function App() {
                   </div>
                 )}
               </div>
-              {selectedOblast && selectedCity && selectedGroup && (
-                <button
-                  onClick={() => { setHomeExpanded(false); hapticNotification('success'); }}
-                  className="w-full rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white transition-all hover:scale-[1.02]"
-                >Згорнути</button>
-              )}
               </div>
               )}
             </div>
