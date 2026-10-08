@@ -1145,11 +1145,15 @@ function GuidedTour({ onDone, onSkip, goToView }: { onDone: () => void; onSkip: 
   // Anchor the tooltip next to the highlighted element, clamped to the screen.
   useEffect(() => {
     if (!rect) { setCardPos(null); return; }
-    const cw = cardRef.current?.offsetWidth ?? 340;
+    const viewportWidth = window.visualViewport?.width ?? document.documentElement.clientWidth;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const cw = cardRef.current?.offsetWidth ?? Math.min(380, viewportWidth - 24);
     const ch = cardRef.current?.offsetHeight ?? 280;
-    const left = Math.min(Math.max(12, rect.left + rect.width / 2 - cw / 2), Math.max(12, window.innerWidth - cw - 12));
-    const fitsBelow = rect.top + rect.height + 12 + ch <= window.innerHeight - 12;
-    setCardPos({ top: fitsBelow ? rect.top + rect.height + 12 : Math.max(12, rect.top - ch - 12), left });
+    const left = Math.min(Math.max(12, rect.left + rect.width / 2 - cw / 2), Math.max(12, viewportWidth - cw - 12));
+    const fitsBelow = rect.top + rect.height + 12 + ch <= viewportHeight - 12;
+    const preferredTop = fitsBelow ? rect.top + rect.height + 12 : rect.top - ch - 12;
+    const top = Math.min(Math.max(12, preferredTop), Math.max(12, viewportHeight - ch - 12));
+    setCardPos({ top, left });
   }, [rect, step]);
 
   return (
@@ -1166,9 +1170,11 @@ function GuidedTour({ onDone, onSkip, goToView }: { onDone: () => void; onSkip: 
       )}
       <div
         ref={cardRef}
-        className="fixed z-[62] rounded-3xl border border-white/15 p-6 shadow-2xl fade-in-up"
+        className="fixed z-[62] box-border max-h-[calc(100vh-24px)] overflow-y-auto rounded-3xl border border-white/15 p-6 shadow-2xl fade-in-up"
         style={{
           width: 'min(380px, calc(100vw - 24px))',
+          maxWidth: 'calc(100vw - 24px)',
+          boxSizing: 'border-box',
           background: 'color-mix(in srgb, var(--bg-card, #ffffff) 92%, transparent)',
           ...(cardPos
             ? { top: cardPos.top, left: cardPos.left }
