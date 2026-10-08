@@ -1246,6 +1246,56 @@ type AdminStats = {
   };
 };
 
+function formatRelative(iso: string | null): string {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 0) return 'щойно';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'щойно';
+  if (mins < 60) return `${mins} хв тому`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} год тому`;
+  const days = Math.floor(hours / 24);
+  return `${days} дн тому`;
+}
+
+function AdminUserDetail({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm fade-in" onClick={onClose}>
+      <div className="d-panel menu-solid w-full max-w-md rounded-t-2xl p-5 fade-in-scale max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full accent-bg text-sm font-bold text-white">
+              {user.username ? user.username[0].toUpperCase() : '?'}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-primary-c">{user.username ? `@${user.username}` : `ID: ${user.tgUserId}`}</p>
+              <p className="text-[11px] text-muted-c">ID: {user.tgUserId}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="d-btn flex h-8 w-8 items-center justify-center rounded-full"><X className="h-4 w-4 text-secondary-c" /></button>
+        </div>
+        <div className="space-y-2.5">
+          {[
+            { label: 'Місто', value: user.cityName ?? 'Не вказано' },
+            { label: 'Черга', value: user.queueGroup ?? 'Не вказано' },
+            { label: 'Друга локація', value: user.altCityName ?? 'Немає' },
+            { label: 'Активна локація', value: user.activeLocation === 'work' ? 'Робота' : 'Дім' },
+            { label: 'Сповіщення', value: user.notifyEnabled ? `Увімкнено (${user.notifyMinutesBefore} хв до)` : 'Вимкнено' },
+            { label: 'Останній візит', value: formatRelative(user.updatedAt) },
+            { label: 'Реєстрація', value: formatRelative(user.createdAt) },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex items-center justify-between rounded-lg bg-black/4 px-3 py-2 dark:bg-white/6">
+              <span className="text-xs text-secondary-c">{label}</span>
+              <span className="text-xs font-semibold text-primary-c">{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminView({ initData, onBack }: { initData: string; onBack: () => void }) {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
