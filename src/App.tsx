@@ -484,7 +484,11 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
           <div
             key={i}
             className={`d-card hover-lift flex items-center gap-3 px-4 py-3 ${
-              active ? (isOff ? 'ring-1 ring-red-500/30' : 'ring-1 ring-emerald-500/30') : isPast ? 'opacity-40' : ''
+              active
+                ? isOff
+                  ? 'bg-red-500/15 ring-1 ring-inset ring-red-500/25'
+                  : 'bg-emerald-500/15 ring-1 ring-inset ring-emerald-500/25'
+                : isPast ? 'opacity-40' : ''
             }`}
           >
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isOff ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
