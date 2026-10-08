@@ -4,7 +4,7 @@ import {
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, Clock, Info,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
-  LayoutGrid, Gauge, Layers, History, Heart, ShieldCheck,
+  LayoutGrid, Gauge, Layers, History, Heart, ShieldCheck, ChevronDown,
 } from 'lucide-react';
 import { supabase, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -912,6 +912,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
   const [error, setError] = useState(false);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
   const [changeDayTab, setChangeDayTab] = useState<'today' | 'tomorrow'>('today');
+  const [olderExpanded, setOlderExpanded] = useState(false);
 
   useEffect(() => {
     setGroups(null); setError(false);
@@ -1019,35 +1020,87 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
           </p>
         </div>
       ) : (
-        filteredGroups.map((g) => (
-          <div key={g.detectedAt} className="d-card px-3.5 py-3 fade-in">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg">
-                <RefreshCw className="h-3 w-3 accent-c" />
-              </span>
-              <span className="text-xs font-bold text-primary-c">{formatChangeTime(g.detectedAt)}</span>
-            </div>
-            <div className="space-y-1.5">
-              {g.items
-                .filter((it) => {
-                  const label = formatScheduleDate(it.scheduleDate, it.day);
-                  return changeDayTab === 'today' ? label === 'сьогодні' : label === 'завтра';
-                })
-                .map((it, i) => (
-                  <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
-                    <div className="flex items-center gap-1.5">
-                      <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
+        <>
+          {/* Latest change — always expanded */}
+          {(() => {
+            const g = filteredGroups[0];
+            return (
+              <div key={g.detectedAt} className="d-card px-3.5 py-3 fade-in">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg">
+                    <RefreshCw className="h-3 w-3 accent-c" />
+                  </span>
+                  <span className="text-xs font-bold text-primary-c">{formatChangeTime(g.detectedAt)}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {g.items
+                    .filter((it) => {
+                      const label = formatScheduleDate(it.scheduleDate, it.day);
+                      return changeDayTab === 'today' ? label === 'сьогодні' : label === 'завтра';
+                    })
+                    .map((it, i) => (
+                      <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
+                        <div className="flex items-center gap-1.5">
+                          <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
+                        </div>
+                        {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
+                          <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
+                        ) : (
+                          <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Older changes — collapsed under spoiler */}
+          {filteredGroups.length > 1 && (
+            <div className="fade-in">
+              <button
+                onClick={() => { setOlderExpanded((v) => !v); hapticImpact('light'); }}
+                className="d-btn flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium text-secondary-c transition-all hover:scale-[1.01]"
+              >
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${olderExpanded ? 'rotate-180' : ''}`} />
+                {olderExpanded ? 'Сховати старі зміни' : `Попередні зміни (${filteredGroups.length - 1})`}
+              </button>
+              {olderExpanded && (
+                <div className="mt-2 space-y-3">
+                  {filteredGroups.slice(1).map((g) => (
+                    <div key={g.detectedAt} className="d-card px-3.5 py-3 opacity-60">
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg">
+                          <RefreshCw className="h-3 w-3 accent-c" />
+                        </span>
+                        <span className="text-xs font-bold text-primary-c">{formatChangeTime(g.detectedAt)}</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {g.items
+                          .filter((it) => {
+                            const label = formatScheduleDate(it.scheduleDate, it.day);
+                            return changeDayTab === 'today' ? label === 'сьогодні' : label === 'завтра';
+                          })
+                          .map((it, i) => (
+                            <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
+                              <div className="flex items-center gap-1.5">
+                                <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
+                              </div>
+                              {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
+                                <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
+                              ) : (
+                                <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
+                              )}
+                            </div>
+                          ))}
+                      </div>
                     </div>
-                    {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
-                      <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
-                    ) : (
-                      <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        ))
+          )}
+        </>
       )}
     </div>
   );
