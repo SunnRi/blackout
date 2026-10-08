@@ -197,13 +197,17 @@ function StatusCompact({ slots, now }: { slots: Slot[]; now: KyivTime }) {
             )}
           </p>
           {isOff && nextOn && (
-            <p className="text-sm" style={{ color: 'var(--on-positive)' }}>
-              Увімкнуть о {minutesToTime(nextOn.slot.start)} · через {formatCountdown(nextOn.minutesUntil)}
+            <p className="text-sm text-secondary-c">
+              Увімкнуть о <b className="text-primary-c">{minutesToTime(nextOn.slot.start)}</b>
+              <span className="mx-1 text-muted-c">·</span>
+              через {formatCountdown(nextOn.minutesUntil)}
             </p>
           )}
           {!isOff && nextOutage && (
-            <p className="text-sm" style={{ color: 'var(--on-negative)' }}>
-              Відключення о {minutesToTime(nextOutage.slot.start)} · через {formatCountdown(nextOutage.minutesUntil)}
+            <p className="text-sm text-secondary-c">
+              Відключення о <b className="text-primary-c">{minutesToTime(nextOutage.slot.start)}</b>
+              <span className="mx-1 text-muted-c">·</span>
+              через {formatCountdown(nextOutage.minutesUntil)}
             </p>
           )}
           {!isOff && !nextOutage && (
@@ -231,8 +235,8 @@ function StatusFull({ slots, now }: { slots: Slot[]; now: KyivTime }) {
     <div className={`fade-in-scale hover-lift d-card p-5 text-center relative overflow-hidden ${isOff ? 'status-off' : 'status-on'}`}>
       <div className={`mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full ${isOff ? 'bg-red-500/15' : 'bg-emerald-500/15'}`}>
         {isOff
-          ? <ZapOff className="flicker h-8 w-8" style={{ color: 'var(--on-negative)' }} />
-          : <Zap className="neon-pulse h-8 w-8" style={{ color: 'var(--on-positive)' }} />}
+          ? <ZapOff className="flicker h-8 w-8 text-red-500" />
+          : <Zap className="neon-pulse h-8 w-8 text-emerald-500" />}
       </div>
       <h2 className="text-xl font-bold text-primary-c">
         {isOff ? 'Світла зараз немає' : 'Світло зараз є'}
@@ -247,16 +251,20 @@ function StatusFull({ slots, now }: { slots: Slot[]; now: KyivTime }) {
       )}
       <div className="mt-3 flex flex-col gap-1.5">
         {isOff && nextOn && (
-          <div className="rounded-xl bg-emerald-500/8 px-3 py-2">
-            <span className="text-sm" style={{ color: 'var(--on-positive)' }}>
-              Увімкнуть о <b className="text-primary-c">{minutesToTime(nextOn.slot.start)}</b> · через {formatCountdown(nextOn.minutesUntil)}
+          <div className="rounded-xl bg-primary-c/5 px-3 py-2 ring-1 ring-inset ring-white/10 dark:ring-white/10" style={{ backgroundColor: 'color-mix(in srgb, var(--on-positive) 10%, transparent)' }}>
+            <span className="text-sm text-secondary-c">
+              Увімкнуть о <b className="text-primary-c">{minutesToTime(nextOn.slot.start)}</b>
+              <span className="mx-1 text-muted-c">·</span>
+              через {formatCountdown(nextOn.minutesUntil)}
             </span>
           </div>
         )}
         {!isOff && nextOutage && (
-          <div className="rounded-xl bg-red-500/8 px-3 py-2">
-            <span className="text-sm" style={{ color: 'var(--on-negative)' }}>
-              Відключення о <b className="text-primary-c">{minutesToTime(nextOutage.slot.start)}</b> · через {formatCountdown(nextOutage.minutesUntil)}
+          <div className="rounded-xl px-3 py-2" style={{ backgroundColor: 'color-mix(in srgb, var(--on-negative) 10%, transparent)' }}>
+            <span className="text-sm text-secondary-c">
+              Відключення о <b className="text-primary-c">{minutesToTime(nextOutage.slot.start)}</b>
+              <span className="mx-1 text-muted-c">·</span>
+              через {formatCountdown(nextOutage.minutesUntil)}
             </span>
           </div>
         )}

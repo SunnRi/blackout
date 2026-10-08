@@ -471,32 +471,32 @@
 .pulse-green { animation: pulse-glow-green 2.5s ease-in-out infinite; }
 .pulse-amber { animation: pulse-glow-amber 2.5s ease-in-out infinite; }
 
-/* Status plaque: solid state-colored fill + breathing glow.
-   Uses .d-card.status-on specificity to win over the glass card shell */
+/* Status plaque: neutral glass fill with a state-colored edge only, so the
+   text stays readable on both light and dark themes */
 @keyframes statusGlowOn {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(52,199,89,0.30), 0 8px 28px rgba(52,199,89,0.18); }
-  50%      { box-shadow: 0 0 0 1px rgba(52,199,89,0.50), 0 10px 40px rgba(52,199,89,0.32); }
+  0%, 100% { box-shadow: 0 0 0 1px rgba(52,199,89,0.30), 0 4px 18px rgba(52,199,89,0.10); }
+  50%      { box-shadow: 0 0 0 1px rgba(52,199,89,0.50), 0 6px 26px rgba(52,199,89,0.18); }
 }
 @keyframes statusGlowOff {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(255,69,58,0.30), 0 8px 28px rgba(255,69,58,0.18); }
-  50%      { box-shadow: 0 0 0 1px rgba(255,69,58,0.50), 0 10px 40px rgba(255,69,58,0.32); }
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255,69,58,0.30), 0 4px 18px rgba(255,69,58,0.10); }
+  50%      { box-shadow: 0 0 0 1px rgba(255,69,58,0.50), 0 6px 26px rgba(255,69,58,0.18); }
 }
 .d-card.status-on {
-  background: linear-gradient(140deg, rgba(52,199,89,0.30) 0%, rgba(52,199,89,0.14) 50%, rgba(16,185,129,0.26) 100%);
+  background: linear-gradient(140deg, rgba(52,199,89,0.09) 0%, rgba(52,199,89,0.03) 50%, rgba(16,185,129,0.07) 100%);
   border: 1px solid rgba(52,199,89,0.45);
   animation: statusGlowOn 3.2s ease-in-out infinite;
 }
 .d-card.status-off {
-  background: linear-gradient(140deg, rgba(255,69,58,0.30) 0%, rgba(255,69,58,0.14) 50%, rgba(255,45,85,0.26) 100%);
+  background: linear-gradient(140deg, rgba(255,69,58,0.09) 0%, rgba(255,69,58,0.03) 50%, rgba(255,45,85,0.07) 100%);
   border: 1px solid rgba(255,69,58,0.45);
   animation: statusGlowOff 2.4s ease-in-out infinite;
 }
 .dark .d-card.status-on {
-  background: linear-gradient(140deg, rgba(52,199,89,0.38) 0%, rgba(52,199,89,0.18) 55%, rgba(16,185,129,0.32) 100%);
+  background: linear-gradient(140deg, rgba(52,199,89,0.13) 0%, rgba(52,199,89,0.05) 55%, rgba(16,185,129,0.09) 100%);
   border-color: rgba(52,199,89,0.55);
 }
 .dark .d-card.status-off {
-  background: linear-gradient(140deg, rgba(255,69,58,0.38) 0%, rgba(255,69,58,0.18) 55%, rgba(255,45,85,0.32) 100%);
+  background: linear-gradient(140deg, rgba(255,69,58,0.13) 0%, rgba(255,69,58,0.05) 55%, rgba(255,45,85,0.09) 100%);
   border-color: rgba(255,69,58,0.55);
 }
 
