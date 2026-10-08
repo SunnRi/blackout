@@ -479,29 +479,29 @@
 /* Status plaque: neutral glass fill with a state-colored edge only, so the
    text stays readable on both light and dark themes */
 @keyframes statusGlowOn {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(52,199,89,0.45), 0 0 18px 2px rgba(52,199,89,0.22), 0 8px 28px rgba(52,199,89,0.12); }
-  50%      { box-shadow: 0 0 0 3px rgba(52,199,89,0.72), 0 0 34px 7px rgba(52,199,89,0.38), 0 12px 38px rgba(52,199,89,0.20); }
+  0%, 100% { box-shadow: inset 0 0 28px rgba(52,199,89,0.10); }
+  50%      { box-shadow: inset 0 0 42px rgba(52,199,89,0.18); }
 }
 @keyframes statusGlowOff {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(255,69,58,0.48), 0 0 18px 2px rgba(255,69,58,0.24), 0 8px 28px rgba(255,69,58,0.14); }
-  50%      { box-shadow: 0 0 0 3px rgba(255,69,58,0.76), 0 0 34px 7px rgba(255,69,58,0.42), 0 12px 38px rgba(255,69,58,0.22); }
+  0%, 100% { box-shadow: inset 0 0 28px rgba(255,69,58,0.10); }
+  50%      { box-shadow: inset 0 0 42px rgba(255,69,58,0.18); }
 }
 .d-card.status-on {
-  background: linear-gradient(140deg, rgba(52,199,89,0.18) 0%, rgba(52,199,89,0.07) 50%, rgba(16,185,129,0.14) 100%);
+  background: linear-gradient(140deg, rgba(52,199,89,0.22) 0%, rgba(52,199,89,0.12) 52%, rgba(16,185,129,0.20) 100%);
   border: 2px solid rgba(52,199,89,0.62);
   animation: statusGlowOn 3.2s ease-in-out infinite;
 }
 .d-card.status-off {
-  background: linear-gradient(140deg, rgba(255,69,58,0.18) 0%, rgba(255,69,58,0.07) 50%, rgba(255,45,85,0.14) 100%);
+  background: linear-gradient(140deg, rgba(255,69,58,0.22) 0%, rgba(255,69,58,0.12) 52%, rgba(255,45,85,0.20) 100%);
   border: 2px solid rgba(255,69,58,0.66);
   animation: statusGlowOff 2.4s ease-in-out infinite;
 }
 .dark .d-card.status-on {
-  background: linear-gradient(140deg, rgba(52,199,89,0.24) 0%, rgba(52,199,89,0.09) 55%, rgba(16,185,129,0.16) 100%);
+  background: linear-gradient(140deg, rgba(52,199,89,0.28) 0%, rgba(52,199,89,0.16) 55%, rgba(16,185,129,0.24) 100%);
   border-color: rgba(52,199,89,0.72);
 }
 .dark .d-card.status-off {
-  background: linear-gradient(140deg, rgba(255,69,58,0.24) 0%, rgba(255,69,58,0.09) 55%, rgba(255,45,85,0.16) 100%);
+  background: linear-gradient(140deg, rgba(255,69,58,0.28) 0%, rgba(255,69,58,0.16) 55%, rgba(255,45,85,0.24) 100%);
   border-color: rgba(255,69,58,0.76);
 }
 
