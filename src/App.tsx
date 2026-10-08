@@ -5,7 +5,7 @@ import {
   Sun, Moon, Clock, Info,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
   LayoutGrid, Gauge, Layers, History, Heart, ShieldCheck, ChevronDown,
-  Plus, Minus, MoveRight, X, BarChart3, Users, Map, AlertTriangle,
+  Plus, Minus, MoveRight, X, BarChart3, Users, MapIcon, AlertTriangle,
 } from 'lucide-react';
 import { supabase, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -1266,7 +1266,7 @@ function AdminView({ initData, onBack }: { initData: string; onBack: () => void 
           { label: 'Користувачів', value: stats.users.total, icon: Users },
           { label: 'Активні за 7 днів', value: stats.users.activeLast7Days, icon: BarChart3 },
           { label: 'Зі сповіщеннями', value: stats.users.notificationsEnabled, icon: Bell },
-          { label: 'Міст перевіряється', value: stats.schedules.trackedCities, icon: Map },
+          { label: 'Міст перевіряється', value: stats.schedules.trackedCities, icon: MapIcon },
         ].map(({ label, value, icon: Icon }) => (
           <div key={label} className="d-card p-3.5"><Icon className="h-4 w-4 accent-c" /><p className="mt-2 text-2xl font-bold text-primary-c">{value}</p><p className="text-[11px] text-secondary-c">{label}</p></div>
         ))}
