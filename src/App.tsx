@@ -435,7 +435,11 @@ function CompactList({ slots, now, isToday, limit }: { slots: Slot[]; now: KyivT
           <div
             key={`${slot.start}-${i}`}
             className={`row-hover flex items-center gap-3 px-4 py-2.5 ${i < shown.length - 1 ? 'border-b border-subtle-c' : ''} ${
-              active ? (isOff ? 'bg-red-500/6' : 'bg-emerald-500/6') : isPast ? 'opacity-35' : ''
+              active
+                ? isOff
+                  ? 'bg-red-500/15 ring-1 ring-inset ring-red-500/25'
+                  : 'bg-emerald-500/15 ring-1 ring-inset ring-emerald-500/25'
+                : isPast ? 'opacity-35' : ''
             }`}
           >
             <div
