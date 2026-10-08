@@ -1995,10 +1995,10 @@ function App() {
                   <Plus className="h-4 w-4" /> Додати другу локацію
                 </button>
               ) : altExpanded || (altOblast || altCity || altGroup) ? (
-                <div className="d-card space-y-3 px-3.5 py-3">
+                <div className="space-y-3">
                   <p className="text-[11px] text-muted-c">Показуватимемо графік і для неї. Перемикайте вкладками на головному екрані.</p>
                   <div>
-                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Назва вкладки</p>
+                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Назва вкладки</h3>
                     <input
                       type="text"
                       value={altLabel}
@@ -2009,7 +2009,7 @@ function App() {
                     />
                   </div>
                   <div>
-                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Область</p>
+                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Область</h3>
                     <select
                       value={altOblast?.slug ?? ''}
                       onChange={(e) => {
@@ -2023,7 +2023,7 @@ function App() {
                     </select>
                   </div>
                   <div>
-                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Місто</p>
+                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Місто</h3>
                     {altCity ? (
                       <button
                         onClick={() => { setAltCity(null); setAltGroup(''); setAltCitySearch(''); hapticImpact('light'); }}
@@ -2084,7 +2084,7 @@ function App() {
                     )}
                   </div>
                   <div>
-                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Черга</p>
+                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Черга</h3>
                     <div className="grid grid-cols-6 gap-1">
                       {ALL_GROUPS.map((group) => (
                         <button
