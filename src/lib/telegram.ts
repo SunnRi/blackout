@@ -16,6 +16,8 @@ declare global {
         ready: () => void;
         expand: () => void;
         close: () => void;
+        openLink?: (url: string) => void;
+        openTelegramLink?: (url: string) => void;
         themeParams?: Record<string, string>;
         colorScheme?: 'light' | 'dark';
         setHeaderColor?: (color: string) => void;

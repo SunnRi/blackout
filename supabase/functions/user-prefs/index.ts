@@ -117,7 +117,8 @@ Deno.serve(async (req: Request) => {
       if (typeof patch.oblast_slug === "string" && /^[a-z0-9-]{1,64}$/.test(patch.oblast_slug)) {
         clean.oblast_slug = patch.oblast_slug;
       }
-      if (typeof patch.city_slug === "string" && /^[a-z0-9-]{1,64}$/.test(patch.city_slug)) {
+      if (typeof patch.city_slug === "string" && /^[a-z0-9-/]{1,200}$/.test(patch.city_slug)) {
+        // Settlement slugs are hierarchical ("hromada/settlement"), so a slash is valid.
         clean.city_slug = patch.city_slug;
       }
       if (typeof patch.city_name === "string" && patch.city_name.length <= 128) {

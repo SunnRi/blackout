@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Zap, ZapOff, MapPin, Loader2, CheckCircle2,
   Bell, BellOff, ChevronLeft, Search, Settings,
-  Sun, Moon, Clock, Info, X,
+  Sun, Moon, Clock, Info,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
-  LayoutGrid, Gauge, Layers, Eye, History,
+  LayoutGrid, Gauge, Layers, History,
 } from 'lucide-react';
-import { supabase, type UserPreferences, type ScheduleChange } from '@/lib/supabase';
+import { supabase, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
 import {
   initTelegramWebApp, getTelegramUser, getTelegramWebApp, getTelegramStartScreen, hapticImpact, hapticNotification,
@@ -1039,6 +1039,10 @@ function App() {
   const tgUser = useMemo(() => getTelegramUser(), []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedCityKeyRef = useRef<string>('');
+  // True once the user picks anything themselves; the saved-settings restore
+  // must never overwrite a choice the user just made.
+  const hasSelectionRef = useRef(false);
+  hasSelectionRef.current = Boolean(selectedOblast || selectedCity || selectedGroup);
 
   // Red dot on the history button: set when the latest change for this city is
   // newer than the last time the user opened the changes tab.
@@ -1185,7 +1189,7 @@ function App() {
         };
         if (cancelled) return;
         const prefs = json.prefs;
-        if (prefs) {
+        if (prefs && !hasSelectionRef.current) {
           setNotifyEnabled(prefs.notify_enabled);
           setNotifyMinutes(prefs.notify_minutes_before);
           // Use per-city seen timestamp if available, fall back to legacy.
@@ -1207,42 +1211,6 @@ function App() {
       .catch(() => { if (!cancelled) setPrefsChecked(true); });
     return () => { cancelled = true; };
   }, [tgUser, oblasts]);
-
-  // Merge DB queue/city once cities arrive, without touching onboarding state.
-  useEffect(() => {
-    if (!tgUser || !onboarded || cities.length === 0) return;
-    const tg = getTelegramWebApp();
-    if (!tg?.initData) return;
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({ initData: tg.initData }),
-    })
-      .then(async (r) => {
-        if (!r.ok) return;
-        const json = await r.json() as {
-          prefs?: {
-            notify_enabled: boolean; notify_minutes_before: number;
-            oblast_slug: string | null; city_slug: string | null; queue_group: string | null;
-          } | null;
-        };
-        const prefs = json.prefs;
-        if (prefs) {
-          setNotifyEnabled(prefs.notify_enabled);
-          setNotifyMinutes(prefs.notify_minutes_before);
-          if (prefs.oblast_slug) {
-            const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug);
-            if (oblast) setSelectedOblast(oblast);
-          }
-          if (prefs.city_slug) {
-            const city = cities.find((c) => c.slug === prefs.city_slug);
-            if (city) setSelectedCity(city);
-          }
-          if (prefs.queue_group) setSelectedGroup(prefs.queue_group);
-        }
-      })
-      .catch(() => { /* keep local state */ });
-  }, [tgUser, onboarded, oblasts, cities]);
 
   useEffect(() => {
     if (!tgUser || !selectedOblast || !selectedCity || !selectedGroup) return;
