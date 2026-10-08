@@ -1267,7 +1267,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   {
     icon: History,
-    title: 'Оновлення графіка',
+    title: 'Зміни графіка відключень',
     text: 'Ця кнопка відкриває історію змін. Коли енергетики змінюють графік — побачите що саме змінилося. Про зміни повідомить і Telegram-бот.',
     accent: 'from-amber-500 to-orange-500',
     target: '[data-tour="history"]',
@@ -1543,7 +1543,7 @@ function AdminView({ initData, onBack }: { initData: string; onBack: () => void 
         <div className="mt-3 flex gap-2 text-xs"><span className="flex-1 rounded-lg bg-emerald-500/12 px-3 py-2 text-emerald-600">Свіжі: <b>{stats.schedules.fresh}</b></span><span className="flex-1 rounded-lg bg-amber-500/12 px-3 py-2 text-amber-600">Проблемні: <b>{stats.schedules.stale}</b></span></div>
         <div className="mt-3 space-y-1.5 rounded-lg bg-black/4 px-3 py-2.5 dark:bg-white/6">
           <div className="flex items-center justify-between text-xs"><span className="text-secondary-c">Остання перевірка</span><b className="text-primary-c">{formatRelative(stats.schedules.lastCheckedAt)}</b></div>
-          <div className="flex items-center justify-between text-xs"><span className="text-secondary-c">Останнє оновлення графіка</span><b className="text-primary-c">{formatRelative(stats.schedules.lastChangeAt)}</b></div>
+          <div className="flex items-center justify-between text-xs"><span className="text-secondary-c">Останні зміни графіка відключень</span><b className="text-primary-c">{formatRelative(stats.schedules.lastChangeAt)}</b></div>
         </div>
         <button onClick={() => setShowCityChecks((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-1 text-[11px] accent-c">
           {showCityChecks ? 'Сховати' : 'Показати'} по містах <ChevronDown className={`h-3 w-3 transition-transform ${showCityChecks ? 'rotate-180' : ''}`} />
@@ -2106,7 +2106,7 @@ function App() {
               </div>
               <div>
                 <h1 className="text-lg font-bold leading-tight text-primary-c">
-                  {view === 'schedule' ? 'Графік світла' : view === 'changes' ? 'Оновлення графіка' : view === 'admin' ? 'Адмінка' : 'Налаштування'}
+                  {view === 'schedule' ? 'Графік світла' : view === 'changes' ? 'Зміни графіка' : view === 'admin' ? 'Адмінка' : 'Налаштування'}
                 </h1>
                 {selectedCity && view !== 'settings' ? (
                   <button onClick={() => { setView('settings'); hapticImpact('light'); }}
@@ -2173,7 +2173,7 @@ function App() {
               {view === 'schedule' && selectedCity && (
                 <button onClick={() => { setView('changes'); hapticImpact('light'); }}
                   className="relative d-btn flex h-9 w-9 items-center justify-center rounded-full"
-                  aria-label="Оновлення графіка" title="Оновлення графіка" data-tour="history">
+                  aria-label="Зміни графіка" title="Зміни графіка" data-tour="history">
                   <History className="h-4 w-4 accent-c" />
                   {unseenChanges && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
