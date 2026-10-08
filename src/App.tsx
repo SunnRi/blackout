@@ -4,7 +4,7 @@ import {
   Bell, BellOff, ChevronLeft, Search, Settings,
   Sun, Moon, Clock, Info,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
-  LayoutGrid, Gauge, Layers, History,
+  LayoutGrid, Gauge, Layers, History, Heart, ShieldCheck,
 } from 'lucide-react';
 import { supabase, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -1614,13 +1614,18 @@ function App() {
                 )}
 
                 <footer className="mt-6 border-t border-subtle-c pt-3">
-                  <div className="flex items-end justify-between gap-2">
-                    <p className="text-[10px] leading-tight text-muted-c">
-                      Дані з відкритих джерел.<br />Лише інформаційні, для особистого використання.
-                    </p>
-                    <p className="shrink-0 text-[10px] leading-tight text-muted-c">
-                      Зроблено з любов&apos;ю, by wt.rvng
-                    </p>
+                  <div className="flex items-end justify-between gap-3">
+                    <div className="flex items-start gap-1.5">
+                      <ShieldCheck className="mt-px h-3 w-3 shrink-0 text-muted-c" />
+                      <p className="text-[10px] leading-tight text-muted-c">
+                        Дані з відкритих джерел.<br />Лише інформаційні, для особистого використання.
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 dark:bg-white/8">
+                      <span className="text-[10px] leading-none text-muted-c">Зроблено з</span>
+                      <Heart className="h-2.5 w-2.5 shrink-0 fill-current text-red-400" />
+                      <span className="text-[10px] leading-none text-muted-c">, by wt.rvng</span>
+                    </div>
                   </div>
                 </footer>
               </>
