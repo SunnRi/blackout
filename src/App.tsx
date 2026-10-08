@@ -1094,9 +1094,21 @@ function App() {
   const [notifyMinutes, setNotifyMinutes] = useState(60);
   const [saved, setSaved] = useState(false);
 
+  // Second location ("work") — optional, configured in settings only.
+  const [altOblast, setAltOblast] = useState<Oblast | null>(null);
+  const [altCity, setAltCity] = useState<City | null>(null);
+  const [altGroup, setAltGroup] = useState('');
+  const [activeLocation, setActiveLocation] = useState<'home' | 'work'>('home');
+  const [altExpanded, setAltExpanded] = useState(false);
+  const [altOblastList, setAltOblastList] = useState<Oblast[]>(oblasts);
+  const [altCities, setAltCities] = useState<City[]>([]);
+  const [altCitiesLoading, setAltCitiesLoading] = useState(false);
+  const [altCitySearch, setAltCitySearch] = useState('');
+
   const tgUser = useMemo(() => getTelegramUser(), []);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedCityKeyRef = useRef<string>('');
+  const homeBackupRef = useRef<{ oblast: Oblast | null; city: City | null; group: string } | null>(null);
   // True once the user picks anything themselves; the saved-settings restore
   // must never overwrite a choice the user just made.
   const hasSelectionRef = useRef(false);
@@ -1206,6 +1218,64 @@ function App() {
       .catch(() => { /* settings stay local */ });
   }, [view, tgUser]);
 
+  // Sync alt oblast list once the catalog loads.
+  useEffect(() => { if (oblasts.length > 0) setAltOblastList(oblasts); }, [oblasts]);
+
+  // Load cities for the alt location when its oblast changes.
+  useEffect(() => {
+    if (!altOblast) { setAltCities([]); return; }
+    setAltCitiesLoading(true);
+    fetchCities(altOblast.slug)
+      .then((data) => setAltCities(data))
+      .catch(() => setAltCities([]))
+      .finally(() => setAltCitiesLoading(false));
+  }, [altOblast]);
+
+  // Save the alt location + active location whenever they change (debounced).
+  useEffect(() => {
+    if (!tgUser) return;
+    const tg = getTelegramWebApp();
+    if (!tg?.initData) return;
+    const key = `${altOblast?.slug ?? ''}|${altCity?.slug ?? ''}|${altGroup}|${activeLocation}`;
+    const timer = setTimeout(async () => {
+      const patch: Record<string, unknown> = { active_location: activeLocation };
+      if (altOblast && altCity && altGroup) {
+        patch.alt_oblast_slug = altOblast.slug;
+        patch.alt_city_slug = altCity.slug;
+        patch.alt_city_name = altCity.name;
+        patch.alt_queue_group = altGroup;
+      }
+      try {
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+          body: JSON.stringify({ initData: tg.initData, patch }),
+        });
+      } catch { /* best-effort */ }
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [tgUser, altOblast, altCity, altGroup, activeLocation]);
+
+  // Switching location swaps the displayed city/queue from the stored pairs.
+  const switchLocation = (target: 'home' | 'work') => {
+    if (target === activeLocation) return;
+    if (target === 'work' && !(altOblast && altCity && altGroup)) return;
+    hapticImpact('medium');
+    if (target === 'work') {
+      homeBackupRef.current = { oblast: selectedOblast, city: selectedCity, group: selectedGroup };
+      setSelectedOblast(altOblast); setSelectedCity(altCity); setSelectedGroup(altGroup);
+    } else {
+      const home = homeBackupRef.current;
+      if (home?.oblast && home?.city) {
+        setSelectedOblast(home.oblast); setSelectedCity(home.city); setSelectedGroup(home.group);
+      } else {
+        // Fall back to stored home prefs.
+        setSelectedOblast(null); setSelectedCity(null); setSelectedGroup('');
+      }
+    }
+    setActiveLocation(target);
+  };
+
   useEffect(() => {
     fetchOblasts()
       .then((data) => { setOblasts(data); setLoading(false); })
@@ -1242,6 +1312,8 @@ function App() {
             notify_enabled: boolean; notify_minutes_before: number;
             oblast_slug: string | null; city_slug: string | null; city_name: string | null; queue_group: string | null;
             last_seen_changes_at: string | null;
+            alt_oblast_slug: string | null; alt_city_slug: string | null; alt_city_name: string | null; alt_queue_group: string | null;
+            active_location: 'home' | 'work' | null;
           } | null;
           city_seen_at?: string | null;
         };
@@ -1263,6 +1335,14 @@ function App() {
             setOnboarded(true);
             localStorage.setItem('onboarded', '1');
           }
+          // Restore the second location if it's configured.
+          if (prefs.alt_oblast_slug && prefs.alt_city_slug && prefs.alt_queue_group) {
+            const altOb = oblasts.find((o) => o.slug === prefs.alt_oblast_slug) ?? null;
+            setAltOblast(altOb);
+            if (prefs.alt_city_name && altOb) setAltCity({ slug: prefs.alt_city_slug, name: prefs.alt_city_name });
+            setAltGroup(prefs.alt_queue_group);
+          }
+          if (prefs.active_location === 'work') setActiveLocation('work');
         }
         setPrefsChecked(true);
       })
@@ -1272,6 +1352,9 @@ function App() {
 
   useEffect(() => {
     if (!tgUser || !selectedOblast || !selectedCity || !selectedGroup) return;
+    // While the "work" location is active, the displayed city/queue belong to
+    // the alt_* columns — never overwrite the home prefs with them.
+    if (activeLocation !== 'home') return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       const tgW = getTelegramWebApp();
@@ -1542,6 +1625,20 @@ function App() {
                   <div className="clock-glow font-mono text-5xl font-bold tracking-tight text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>{now.timeString}</div>
                 </div>
 
+                {/* Location switcher — shown once a second location is set */}
+                {altOblast && altCity && altGroup && (
+                  <div className="mb-3 flex justify-center fade-in">
+                    <div className="segmented">
+                      <button onClick={() => { switchLocation('home'); }}
+                        className={`segmented-item px-5 py-1.5 text-sm font-semibold ${activeLocation === 'home' ? 'active text-primary-c' : 'text-secondary-c'}`}
+                      >Дом</button>
+                      <button onClick={() => { switchLocation('work'); }}
+                        className={`segmented-item px-5 py-1.5 text-sm font-semibold ${activeLocation === 'work' ? 'active text-primary-c' : 'text-secondary-c'}`}
+                      >Работа</button>
+                    </div>
+                  </div>
+                )}
+
             {saved && (
               <div className="mb-3 flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500/8 px-3 py-2 text-xs text-emerald-600 dark:text-emerald-300 fade-in">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Збережено
@@ -1713,6 +1810,89 @@ function App() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Second location (work) */}
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-secondary-c">Друга локація (робота)</h3>
+                {altOblast && altCity && altGroup && !altExpanded && (
+                  <button onClick={() => { setAltExpanded(false); setAltOblast(null); setAltCity(null); setAltGroup(''); setActiveLocation('home'); hapticImpact('medium'); }}
+                    className="text-[11px] font-semibold text-red-400 hover:underline">Прибрати</button>
+                )}
+              </div>
+              {!altOblast && !altCity && !altGroup && !altExpanded ? (
+                <button
+                  onClick={() => { setAltExpanded(true); hapticImpact('light'); }}
+                  className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-secondary-c transition-all hover:scale-[1.01]"
+                >
+                  <Plus className="h-4 w-4" /> Додати другу локацію
+                </button>
+              ) : altExpanded || (altOblast || altCity || altGroup) ? (
+                <div className="d-card space-y-3 px-3.5 py-3">
+                  <p className="text-[11px] text-muted-c">Показуватимемо графік і для неї. Перемикайте між «Дом» і «Работа» на головному екрані.</p>
+                  <div>
+                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Область</p>
+                    <select
+                      value={altOblast?.slug ?? ''}
+                      onChange={(e) => {
+                        const ob = altOblastList.find((o) => o.slug === e.target.value);
+                        if (ob) { setAltOblast(ob); setAltCity(null); setAltGroup(''); hapticImpact('light'); }
+                      }}
+                      className="d-panel w-full appearance-none rounded-xl px-3 py-2 text-sm text-primary-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                    >
+                      <option value="" disabled>Оберіть область...</option>
+                      {altOblastList.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Місто</p>
+                    <div className="d-panel max-h-40 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl p-1.5">
+                      {!altOblast ? (
+                        <p className="py-2 text-center text-xs text-muted-c">Спочатку оберіть область</p>
+                      ) : altCitiesLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-2 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
+                      ) : (
+                        altCities
+                          .filter((c) => !altCitySearch.trim() || c.name.toLowerCase().includes(altCitySearch.toLowerCase()))
+                          .map((city) => (
+                            <button
+                              key={city.slug}
+                              onClick={() => { setAltCity(city); setAltGroup(''); hapticImpact('light'); }}
+                              className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
+                                altCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c active:bg-black/5 dark:active:bg-white/5'
+                              }`}
+                            >
+                              <MapPin className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{city.name}</span>
+                              {altCity?.slug === city.slug && <Check className="ml-auto h-4 w-4 shrink-0" />}
+                            </button>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Черга</p>
+                    <div className="grid grid-cols-6 gap-1">
+                      {ALL_GROUPS.map((group) => (
+                        <button
+                          key={group}
+                          onClick={() => { setAltGroup(group); hapticImpact('light'); }}
+                          className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
+                            altGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
+                          }`}
+                        >{group}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {altOblast && altCity && altGroup && (
+                    <button
+                      onClick={() => { setAltExpanded(false); setActiveLocation('home'); hapticNotification('success'); }}
+                      className="w-full rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white transition-all hover:scale-[1.02]"
+                    >Зберегти другу локацію</button>
+                  )}
+                </div>
+              ) : null}
             </div>
 
             {/* Oblast */}

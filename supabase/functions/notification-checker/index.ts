@@ -35,6 +35,9 @@ type UserPref = {
   oblast_slug: string;
   city_slug: string;
   queue_group: string;
+  alt_oblast_slug: string | null;
+  alt_city_slug: string | null;
+  alt_queue_group: string | null;
   notify_minutes_before: number;
   notify_enabled: boolean;
 };
@@ -151,7 +154,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: users, error } = await supabase
       .from("user_preferences")
-      .select("tg_user_id, oblast_slug, city_slug, queue_group, notify_minutes_before, notify_enabled")
+      .select("tg_user_id, oblast_slug, city_slug, queue_group, alt_oblast_slug, alt_city_slug, alt_queue_group, notify_minutes_before, notify_enabled")
       .eq("notify_enabled", true)
       .not("city_slug", "is", null)
       .not("queue_group", "is", null)
@@ -168,17 +171,32 @@ Deno.serve(async (req: Request) => {
     const currentMinutes = getKyivMinutes();
     let notifiedCount = 0;
 
-    // Group users by oblast/city so we fetch each source page once.
-    const cityGroups = new Map<string, { oblast: string; city: string; users: UserPref[] }>();
+    // Group users by location: each user can have home and optional alt (work).
+    type CityGroup = { oblast: string; city: string };
+    const cityGroups = new Map<string, CityGroup & { users: UserPref[] }>();
     for (const user of users as UserPref[]) {
-      const key = `${user.oblast_slug}/${user.city_slug}`;
-      if (!cityGroups.has(key)) {
-        cityGroups.set(key, { oblast: user.oblast_slug, city: user.city_slug, users: [] });
+      const locations: { oblast: string; city: string; queue: string }[] = [
+        { oblast: user.oblast_slug, city: user.city_slug, queue: user.queue_group },
+      ];
+      if (user.alt_oblast_slug && user.alt_city_slug && user.alt_queue_group) {
+        locations.push({ oblast: user.alt_oblast_slug, city: user.alt_city_slug, queue: user.alt_queue_group });
       }
-      cityGroups.get(key)!.users.push(user);
+      for (const loc of locations) {
+        const key = `${loc.oblast}/${loc.city}`;
+        if (!cityGroups.has(key)) {
+          cityGroups.set(key, { oblast: loc.oblast, city: loc.city, users: [] });
+        }
+        cityGroups.get(key)!.users.push(user);
+      }
     }
 
     for (const { oblast: oblastSlug, city: citySlug, users: cityUsers } of cityGroups.values()) {
+      // Each user's queue in THIS city (home or alt whichever matches).
+      const queueByUser = new Map<number, string>();
+      for (const user of cityUsers) {
+        if (user.oblast_slug === oblastSlug && user.city_slug === citySlug) queueByUser.set(user.tg_user_id, user.queue_group);
+        else if (user.alt_oblast_slug === oblastSlug && user.alt_city_slug === citySlug && user.alt_queue_group) queueByUser.set(user.tg_user_id, user.alt_queue_group);
+      }
       const slotsByQueue: Record<string, Slot[]> = {};
 
       if (citySlug === "kyiv") {
@@ -200,13 +218,15 @@ Deno.serve(async (req: Request) => {
         if (!resp.ok) continue;
         const html = await resp.text();
         const parsed = parseBezsvitlaAll(html);
-        for (const user of cityUsers) {
-          slotsByQueue[user.queue_group] = parsed[user.queue_group] ?? [];
+        for (const queue of new Set(queueByUser.values())) {
+          slotsByQueue[queue] = parsed[queue] ?? [];
         }
       }
 
       for (const user of cityUsers) {
-        const slots = slotsByQueue[user.queue_group];
+        const queue = queueByUser.get(user.tg_user_id);
+        if (!queue) continue;
+        const slots = slotsByQueue[queue];
         if (!slots || slots.length === 0) continue;
 
         const definiteSlots = slots.filter((s) => s.type === "Definite");
@@ -238,7 +258,7 @@ Deno.serve(async (req: Request) => {
               `⚡️ <b>Попередження про відключення</b>\n\n` +
               `Світло відключать о <b>${timeStr}</b> (через ~${minutesUntilOutage} хв)\n` +
               `Тривалість: ${durationMin} хв (до ${endStr})\n` +
-              `Черга: ${user.queue_group}\n\n` +
+              `Черга: ${queue}\n\n` +
               `Підготуйтеся: зарядіть пристрої 💡`;
 
             const sent = await sendMessage(user.tg_user_id, message);

@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET") {
       const { data, error } = await supabase
         .from("user_preferences")
-        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at")
+        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, active_location")
         .eq("tg_user_id", user.id)
         .maybeSingle();
       if (error) throw error;
@@ -127,6 +127,29 @@ Deno.serve(async (req: Request) => {
       if (typeof patch.queue_group === "string" && /^[\d.]{1,8}$/.test(patch.queue_group)) {
         clean.queue_group = patch.queue_group;
       }
+      if (typeof patch.alt_oblast_slug === "string" && /^[a-z0-9-]{1,64}$/.test(patch.alt_oblast_slug)) {
+        clean.alt_oblast_slug = patch.alt_oblast_slug;
+      }
+      if (typeof patch.alt_city_slug === "string" && /^[a-z0-9-/]{1,200}$/.test(patch.alt_city_slug)) {
+        clean.alt_city_slug = patch.alt_city_slug;
+      }
+      if (typeof patch.alt_city_name === "string" && patch.alt_city_name.length <= 128) {
+        clean.alt_city_name = patch.alt_city_name.replace(/[<>&]/g, "");
+      }
+      if (typeof patch.alt_queue_group === "string" && /^[\d.]{1,8}$/.test(patch.alt_queue_group)) {
+        clean.alt_queue_group = patch.alt_queue_group;
+      }
+      if (patch.alt_city_slug === null && patch.alt_oblast_slug === null) {
+        // Explicit reset of the second location.
+        clean.alt_oblast_slug = null;
+        clean.alt_city_slug = null;
+        clean.alt_city_name = null;
+        clean.alt_queue_group = null;
+        clean.active_location = "home";
+      }
+      if (patch.active_location === "home" || patch.active_location === "work") {
+        clean.active_location = patch.active_location;
+      }
       if (bodyObj?.markChangesSeen) {
         // Write per-city seen state to user_change_views so switching cities
         // doesn't leak the seen-state from one city to another.
@@ -156,7 +179,7 @@ Deno.serve(async (req: Request) => {
       // a reload. Also fetch per-city seen state for the user's current city.
       const { data: fresh } = await supabase
         .from("user_preferences")
-        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at")
+        .select("notify_enabled, notify_minutes_before, oblast_slug, city_slug, city_name, queue_group, last_seen_changes_at, alt_oblast_slug, alt_city_slug, alt_city_name, alt_queue_group, active_location")
         .eq("tg_user_id", user.id)
         .maybeSingle();
       const freshPrefs = fresh as { oblast_slug: string | null; city_slug: string | null } | null;

@@ -29,7 +29,7 @@ async function getCronSecret(): Promise<string | null> {
 }
 
 const RETENTION_DAYS = 14;
-const MINI_APP_URL = Deno.env.get("MINI_APP_URL") ?? "https://bolt.new";
+const MINI_APP_URL = Deno.env.get("MINI_APP_URL") ?? "https://botsvitla.bolt.host";
 
 // Minimum number of queues and minimum total slots we expect from a healthy
 // source. If a fetch returns fewer, we treat the source as broken rather than
@@ -236,13 +236,32 @@ async function checkCity(
     .eq("city_slug", citySlug)
     .in("schedule_date", dates);
 
-  const { data: followerRows } = await supabase
+  const { data: homeFollowers } = await supabase
     .from("user_preferences")
     .select("tg_user_id, queue_group, notify_enabled")
     .eq("oblast_slug", oblastSlug)
     .eq("city_slug", citySlug)
     .not("queue_group", "is", null);
-  const followers = (followerRows ?? []) as { tg_user_id: number; queue_group: string; notify_enabled: boolean }[];
+  const { data: altFollowers } = await supabase
+    .from("user_preferences")
+    .select("tg_user_id, alt_queue_group, notify_enabled")
+    .eq("alt_oblast_slug", oblastSlug)
+    .eq("alt_city_slug", citySlug)
+    .not("alt_queue_group", "is", null);
+
+  // Map tg_user_id -> set of queues they follow in this city (home and/or alt).
+  const followersByUser = new Map<number, Set<string>>();
+  const enabledByUser = new Map<number, boolean>();
+  for (const f of (homeFollowers ?? []) as { tg_user_id: number; queue_group: string; notify_enabled: boolean }[]) {
+    if (!followersByUser.has(f.tg_user_id)) followersByUser.set(f.tg_user_id, new Set());
+    followersByUser.get(f.tg_user_id)!.add(f.queue_group);
+    enabledByUser.set(f.tg_user_id, f.notify_enabled);
+  }
+  for (const f of (altFollowers ?? []) as { tg_user_id: number; alt_queue_group: string; notify_enabled: boolean }[]) {
+    if (!followersByUser.has(f.tg_user_id)) followersByUser.set(f.tg_user_id, new Set());
+    followersByUser.get(f.tg_user_id)!.add(f.alt_queue_group);
+    enabledByUser.set(f.tg_user_id, f.notify_enabled);
+  }
 
   type Snap = { queue: string; schedule_date: string; fingerprint: string };
   const prev = new Map<string, Snap>();
@@ -323,16 +342,15 @@ async function checkCity(
     insertedChanges = data ?? [];
   }
 
-  // Queue notifications in the outbox instead of sending directly.
-  if (insertedChanges.length > 0 && followers.length > 0) {
+  // Notify only users who follow this specific queue in one of their
+  // locations (home or alt) — changes in other queues stay silent.
+  if (insertedChanges.length > 0 && followersByUser.size > 0) {
     const outboxRows: { tg_user_id: number; change_id: string }[] = [];
     for (const ch of insertedChanges) {
-      const change = changes.find((c) => c.queue === ch.queue);
-      if (!change) continue;
-      for (const f of followers) {
-        if (f.notify_enabled) {
-          outboxRows.push({ tg_user_id: f.tg_user_id, change_id: ch.id });
-        }
+      for (const [tgUserId, queues] of followersByUser) {
+        if (!queues.has(ch.queue)) continue;
+        if (!enabledByUser.get(tgUserId)) continue;
+        outboxRows.push({ tg_user_id: tgUserId, change_id: ch.id });
       }
     }
     if (outboxRows.length > 0) {
@@ -361,17 +379,22 @@ async function checkCity(
 async function getCitiesToCheck(): Promise<{ oblast_slug: string; city_slug: string }[]> {
   const { data, error } = await supabase
     .from("user_preferences")
-    .select("oblast_slug, city_slug")
+    .select("oblast_slug, city_slug, alt_oblast_slug, alt_city_slug")
     .not("city_slug", "is", null)
     .not("oblast_slug", "is", null);
   if (error) throw error;
   const seen = new Set<string>();
   const list: { oblast_slug: string; city_slug: string }[] = [];
-  for (const r of data ?? []) {
-    const key = `${r.oblast_slug}/${r.city_slug}`;
-    if (seen.has(key)) continue;
+  const add = (oblast: string | null, city: string | null) => {
+    if (!oblast || !city) return;
+    const key = `${oblast}/${city}`;
+    if (seen.has(key)) return;
     seen.add(key);
-    list.push({ oblast_slug: r.oblast_slug!, city_slug: r.city_slug! });
+    list.push({ oblast_slug: oblast, city_slug: city });
+  };
+  for (const r of data ?? []) {
+    add(r.oblast_slug, r.city_slug);
+    add(r.alt_oblast_slug, r.alt_city_slug);
   }
   return list;
 }
