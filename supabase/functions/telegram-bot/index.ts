@@ -114,14 +114,21 @@ async function handlePrefsSaved(confirm: MiniAppConfirm) {
     await supabase.from("user_change_views").delete().eq("tg_user_id", user.id);
     await supabase.from("notification_outbox").delete().eq("tg_user_id", user.id);
 
-    const sent = await tgCall("getHistory", { chat_id: user.id, limit: 100 }) as {
-      ok?: boolean; result?: { message_id: number }[];
-    };
-    if (sent?.ok && Array.isArray(sent.result)) {
-      for (const m of sent.result) {
-        await tgCall("deleteMessage", { chat_id: user.id, message_id: m.message_id });
-      }
+    const { data: trackedMessages } = await supabase
+      .from("telegram_bot_messages")
+      .select("message_id")
+      .eq("tg_user_id", user.id);
+    if (Array.isArray(trackedMessages)) {
+      await Promise.all(
+        trackedMessages.map((message) =>
+          tgCall("deleteMessage", { chat_id: user.id, message_id: message.message_id }),
+        ),
+      );
     }
+    await supabase
+      .from("telegram_bot_messages")
+      .delete()
+      .eq("tg_user_id", user.id);
 
     await sendMessage(
       user.id,
@@ -187,7 +194,18 @@ async function sendMessage(chatId: number, text: string, keyboard?: unknown) {
     parse_mode: "HTML",
   };
   if (keyboard) body.reply_markup = keyboard;
-  return tgCall("sendMessage", body);
+  const result = await tgCall("sendMessage", body) as {
+    ok?: boolean;
+    result?: { message_id?: number };
+  };
+  const messageId = result?.result?.message_id;
+  if (result?.ok && typeof messageId === "number") {
+    await supabase.from("telegram_bot_messages").upsert({
+      tg_user_id: chatId,
+      message_id: messageId,
+    });
+  }
+  return result;
 }
 
 async function editMessage(chatId: number, messageId: number, text: string, keyboard?: unknown) {
