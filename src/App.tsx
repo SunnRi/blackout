@@ -124,6 +124,12 @@ function getHourStatus(sorted: Slot[], hour: number): 'on' | 'off' | 'partial' {
 // ── Theme / Design / Density types ────────────────────────────
 type ThemeMode = 'light' | 'dark';
 type Density = 'minimal' | 'standard' | 'extended';
+type DesignStyle = 'glass' | 'fluent';
+
+const DESIGN_STYLES: { id: DesignStyle; name: string; desc: string }[] = [
+  { id: 'glass', name: 'Liquid Glass', desc: 'Напівпрозорі скляні поверхні з розмиттям' },
+  { id: 'fluent', name: 'Fluent', desc: 'Чисті Mica-поверхні, легкі тіні, стиль Microsoft' },
+];
 
 const DENSITY_OPTIONS: { id: Density; name: string; desc: string; icon: typeof Gauge }[] = [
   { id: 'minimal', name: 'Мінімальний', desc: 'Тільки статус і найближчі події', icon: Gauge },
@@ -140,6 +146,11 @@ function getInitialDensity(): Density {
   if (typeof window === 'undefined') return 'extended';
   const saved = localStorage.getItem('density');
   return saved === 'minimal' || saved === 'standard' ? saved : 'extended';
+}
+function getInitialDesignStyle(): DesignStyle {
+  if (typeof window === 'undefined') return 'glass';
+  const saved = localStorage.getItem('designStyle');
+  return saved === 'fluent' ? 'fluent' : 'glass';
 }
 
 // ── Aurora background (glass design) ──────────────────────────
@@ -1425,6 +1436,7 @@ function App() {
   const [now, setNow] = useState<KyivTime>(getKyivTime());
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
   const [density, setDensity] = useState<Density>(getInitialDensity);
+  const [designStyle, setDesignStyle] = useState<DesignStyle>(getInitialDesignStyle);
   const [onboarded, setOnboarded] = useState<boolean>(() => localStorage.getItem('onboarded') === '1');
   const [tourDone, setTourDone] = useState<boolean>(() => localStorage.getItem('tourDone') === '1');
   const [tourOpen, setTourOpen] = useState(false);
@@ -1567,6 +1579,7 @@ function App() {
 
   useEffect(() => { localStorage.setItem('themeMode', themeMode); }, [themeMode]);
   useEffect(() => { localStorage.setItem('density', density); }, [density]);
+  useEffect(() => { localStorage.setItem('designStyle', designStyle); }, [designStyle]);
 
   // Notification settings are shared with the Telegram bot: refresh them
   // whenever the user opens the settings screen so bot-side edits show up.
@@ -1867,7 +1880,7 @@ function App() {
 
   if (!onboarded) {
     return (
-      <div className="design-glass">
+      <div className={`design-${designStyle}`}>
         <Onboarding
           step={obStep} setStep={setObStep}
           oblasts={oblasts}
@@ -1888,7 +1901,7 @@ function App() {
   const isExtended = density === 'extended';
 
   return (
-    <div className="design-glass min-h-screen bg-primary-c" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <div className={`design-${designStyle} min-h-screen bg-primary-c`} style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <Aurora />
       <div className="relative z-10 mx-auto max-w-lg px-4 py-4 sm:px-5" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
 
@@ -2208,6 +2221,23 @@ function App() {
                     className={`segmented-item flex-1 px-3 py-1.5 text-xs font-semibold ${themeMode === m ? 'active text-primary-c' : 'text-secondary-c'}`}
                   >
                     {m === 'light' ? 'Світла' : 'Темна'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Design style */}
+            <div>
+              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Стиль дизайну</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {DESIGN_STYLES.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => { setDesignStyle(s.id); hapticImpact('light'); }}
+                    className={`d-card px-3 py-2.5 text-left transition-all hover:scale-[1.02] ${designStyle === s.id ? 'ring-2 ring-blue-500/40' : ''}`}
+                  >
+                    <span className={`block text-sm font-bold ${designStyle === s.id ? 'accent-c' : 'text-primary-c'}`}>{s.name}</span>
+                    <span className="mt-0.5 block text-[10px] leading-tight text-muted-c">{s.desc}</span>
                   </button>
                 ))}
               </div>

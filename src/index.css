@@ -350,6 +350,223 @@
     inset -2px -2px 6px rgba(0, 0, 0, 0.2);
 }
 
+/* ── Design: Fluent ───────────────────────────────────────────
+   Mica surfaces, subtle depth, acrylic blur, rounded corners,
+   Reveal-style hover, clean Microsoft Fluent 2 aesthetic */
+.design-fluent {
+  --fluent-bg: #f3f3f7;
+  --fluent-card: #ffffff;
+  --fluent-layer: rgba(255, 255, 255, 0.7);
+  --fluent-accent: #0f6cbd;
+  --fluent-ink: #242424;
+  --fluent-ink-soft: #616161;
+  --fluent-ink-muted: #9a9a9a;
+  --fluent-border: rgba(0, 0, 0, 0.06);
+  --fluent-radius: 8px;
+}
+.dark .design-fluent {
+  --fluent-bg: #1a1b1e;
+  --fluent-card: #252629;
+  --fluent-layer: rgba(37, 38, 41, 0.75);
+  --fluent-accent: #4cc2ff;
+  --fluent-ink: #e6e6e6;
+  --fluent-ink-soft: #a0a0a0;
+  --fluent-ink-muted: #6a6a6a;
+  --fluent-border: rgba(255, 255, 255, 0.08);
+}
+.design-fluent body,
+.design-fluent {
+  background: var(--fluent-bg);
+  font-family: 'Segoe UI', 'Inter', -apple-system, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+.design-fluent .bg-primary-c { background: var(--fluent-bg); }
+.design-fluent .text-primary-c { color: var(--fluent-ink); }
+.design-fluent .text-secondary-c { color: var(--fluent-ink-soft); }
+.design-fluent .text-muted-c { color: var(--fluent-ink-muted); }
+.design-fluent .accent-c { color: var(--fluent-accent); }
+.design-fluent .accent-bg { background: var(--fluent-accent); }
+.design-fluent .accent-soft-bg { background: color-mix(in srgb, var(--fluent-accent) 12%, transparent); }
+.design-fluent .border-subtle-c { border-color: var(--fluent-border); }
+
+/* Fluent cards: Mica-like opaque surface with subtle elevation */
+.design-fluent .d-card {
+  background: var(--fluent-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--fluent-border);
+  border-radius: var(--fluent-radius);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  position: relative;
+}
+.dark .design-fluent .d-card {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.design-fluent .d-card::before { display: none; }
+
+/* Fluent reveal hover: subtle highlight border on hover */
+.design-fluent .d-card:hover {
+  border-color: color-mix(in srgb, var(--fluent-accent) 30%, var(--fluent-border));
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+.dark .design-fluent .d-card:hover {
+  border-color: color-mix(in srgb, var(--fluent-accent) 25%, var(--fluent-border));
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Fluent buttons: solid pill, subtle shadow, no blur */
+.design-fluent .d-btn {
+  background: var(--fluent-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--fluent-border);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.dark .design-fluent .d-btn {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.design-fluent .d-btn:hover {
+  background: color-mix(in srgb, var(--fluent-accent) 8%, var(--fluent-card));
+  border-color: color-mix(in srgb, var(--fluent-accent) 40%, var(--fluent-border));
+}
+.design-fluent .d-btn:active {
+  transform: scale(0.98);
+  background: color-mix(in srgb, var(--fluent-accent) 12%, var(--fluent-card));
+}
+
+/* Fluent panels: acrylic layer for list containers */
+.design-fluent .d-panel {
+  background: var(--fluent-layer);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  border: 1px solid var(--fluent-border);
+  border-radius: var(--fluent-radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+.dark .design-fluent .d-panel {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.design-fluent .d-panel.menu-solid {
+  background: var(--fluent-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.dark .design-fluent .d-panel.menu-solid {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Fluent accent buttons */
+.design-fluent button.accent-bg {
+  background: var(--fluent-accent) !important;
+  color: #fff !important;
+  border: 1px solid color-mix(in srgb, var(--fluent-accent) 80%, #000) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--fluent-accent) 30%, transparent) !important;
+}
+.design-fluent button.accent-bg:hover {
+  background: color-mix(in srgb, var(--fluent-accent) 90%, #000) !important;
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--fluent-accent) 35%, transparent) !important;
+}
+.design-fluent button.accent-bg:active {
+  transform: scale(0.98);
+  background: color-mix(in srgb, var(--fluent-accent) 80%, #000) !important;
+}
+
+/* Fluent segmented control: pill, no blur */
+.design-fluent .segmented {
+  background: color-mix(in srgb, var(--fluent-ink) 5%, transparent);
+  border-radius: 7px;
+  padding: 2px;
+  border: 1px solid var(--fluent-border);
+}
+.dark .design-fluent .segmented {
+  background: color-mix(in srgb, var(--fluent-ink) 8%, transparent);
+}
+.design-fluent .segmented-item {
+  border-radius: 5px;
+  transition: all 0.15s ease;
+}
+.design-fluent .segmented-item.active {
+  background: var(--fluent-card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  color: var(--fluent-accent) !important;
+}
+.dark .design-fluent .segmented-item.active {
+  background: var(--fluent-card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Fluent status cards: subtle tinted fill, no glow animation */
+.design-fluent .d-card.status-on {
+  background: color-mix(in srgb, #34c759 8%, var(--fluent-card));
+  border: 1px solid color-mix(in srgb, #34c759 30%, var(--fluent-border));
+  animation: none;
+}
+.design-fluent .d-card.status-off {
+  background: color-mix(in srgb, #ff3b30 8%, var(--fluent-card));
+  border: 1px solid color-mix(in srgb, #ff3b30 30%, var(--fluent-border));
+  animation: none;
+}
+.dark .design-fluent .d-card.status-on {
+  background: color-mix(in srgb, #30d158 12%, var(--fluent-card));
+  border-color: color-mix(in srgb, #30d158 35%, var(--fluent-border));
+}
+.dark .design-fluent .d-card.status-off {
+  background: color-mix(in srgb, #ff453a 12%, var(--fluent-card));
+  border-color: color-mix(in srgb, #ff453a 35%, var(--fluent-border));
+}
+
+/* Fluent bar fills: flatter, less glossy */
+.design-fluent .bar-green {
+  background: #16a34a;
+  box-shadow: none;
+}
+.design-fluent .bar-red {
+  background: #dc2626;
+  box-shadow: none;
+}
+.design-fluent .bar-red-soft {
+  background: rgba(220, 38, 38, 0.4);
+  box-shadow: none;
+}
+.design-fluent .bar-shine::before { display: none; }
+
+/* Fluent: hide glass-only aurora sheen, keep subtle */
+.design-fluent .glass-sheen::after { display: none; }
+
+/* Fluent: clean typography */
+.design-fluent h1, .design-fluent h2, .design-fluent h3 {
+  font-family: 'Segoe UI', 'Inter', sans-serif;
+  font-weight: 600;
+}
+
+/* Fluent: suppress aurora blobs (Mica is solid) */
+.design-fluent .aurora-blob { opacity: 0.15; }
+
+/* Fluent: hover-lift uses border highlight instead of glass shadow */
+.design-fluent .hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.dark .design-fluent .hover-lift:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Fluent: clock glow softer */
+.design-fluent .clock-glow { text-shadow: 0 0 12px color-mix(in srgb, var(--fluent-accent) 30%, transparent); }
+
+/* Fluent: logo glow subtle */
+.design-fluent .logo-glow { animation: none; box-shadow: 0 0 12px color-mix(in srgb, var(--fluent-accent) 30%, transparent); }
+
+/* Fluent: neon pulse softer */
+.design-fluent .neon-pulse { animation: none; filter: drop-shadow(0 0 4px currentColor); }
+
+/* Fluent: flicker stays but subtler */
+.design-fluent .flicker { animation: electricFlicker 5s linear infinite; }
+
 /* ══ Aurora background (glass design) ══ */
 .aurora {
   position: fixed;
