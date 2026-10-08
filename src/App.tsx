@@ -2340,12 +2340,12 @@ function App() {
                     <div className="flex items-start gap-1.5">
                       <ShieldCheck className="mt-px h-3 w-3 shrink-0 text-muted-c" />
                       <p className="text-[10px] leading-tight text-muted-c">
-                        Дані з відкритих джерел.<br />Лише інформаційні, для особистого використання.
+                        Дані взяті з відкритих джерел<br /> 
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <a
-                        href="https://t.me/wt.rvng"
+                        href="https://t.me/wt_rvng"
                         target="_blank"
                         rel="noreferrer"
                         data-tour="contact-dev"
@@ -2353,7 +2353,7 @@ function App() {
                         aria-label="Повідомити розробнику про проблему"
                       >
                         <MessageCircle className="h-3.5 w-3.5 accent-c" />
-                        Повідомити про проблему
+                       Написати розробнику
                       </a>
                       <div className="flex shrink-0 items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 dark:bg-white/8">
                         <span className="text-[10px] leading-none text-muted-c">Зроблено з</span>
