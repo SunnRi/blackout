@@ -534,9 +534,6 @@ function Onboarding({
   cities, selectedCity, setSelectedCity, selectedGroup, setSelectedGroup,
   onFinish, scheduleLoading, citiesLoading, availableGroups,
   tgUser, notifyEnabled, setNotifyEnabled, notifyMinutes, setNotifyMinutes,
-  designStyle, setDesignStyle,
-  altOblast, setAltOblast, altOblastList, altCity, setAltCity, altCities, altCitiesLoading,
-  altGroup, setAltGroup, altLabel, setAltLabel, altCitySearch, setAltCitySearch,
 }: {
   step: number;
   setStep: (n: number) => void;
@@ -557,21 +554,6 @@ function Onboarding({
   setNotifyEnabled: (v: boolean) => void;
   notifyMinutes: number;
   setNotifyMinutes: (v: number) => void;
-  designStyle: DesignStyle;
-  setDesignStyle: (s: DesignStyle) => void;
-  altOblast: Oblast | null;
-  setAltOblast: (o: Oblast | null) => void;
-  altOblastList: Oblast[];
-  altCity: City | null;
-  setAltCity: (c: City | null) => void;
-  altCities: City[];
-  altCitiesLoading: boolean;
-  altGroup: string;
-  setAltGroup: (g: string) => void;
-  altLabel: string;
-  setAltLabel: (s: string) => void;
-  altCitySearch: string;
-  setAltCitySearch: (s: string) => void;
 }) {
   const [citySearch, setCitySearch] = useState(() => selectedCity?.name ?? '');
   const filtered = useMemo(() => {
@@ -580,7 +562,7 @@ function Onboarding({
     return cities.filter((c) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
   }, [cities, citySearch]);
 
-  const totalSteps = 7;
+  const totalSteps = 5;
 
   return (
     <div className="relative min-h-screen bg-primary-c" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -766,154 +748,6 @@ function Onboarding({
             </div>
           )}
 
-          {step === 5 && (
-            <div className="flex flex-1 flex-col fade-in-right">
-              <div className="mb-4 flex items-center gap-2">
-                <Sparkles className="h-6 w-6 accent-c" />
-                <h2 className="text-2xl font-extrabold text-primary-c">Стиль дизайну</h2>
-              </div>
-              <p className="mb-4 text-sm text-secondary-c">Оберіть, як виглядатиме застосунок. Завжди можна змінити в налаштуваннях.</p>
-              <div className="grid grid-cols-1 gap-3">
-                {DESIGN_STYLES.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => { setDesignStyle(s.id); hapticImpact('light'); }}
-                    className={`d-card px-4 py-4 text-left transition-all hover:scale-[1.02] ${designStyle === s.id ? 'ring-2 ring-blue-500/40' : ''}`}
-                  >
-                    <span className={`block text-base font-bold ${designStyle === s.id ? 'accent-c' : 'text-primary-c'}`}>{s.name}</span>
-                    <span className="mt-1 block text-xs leading-relaxed text-muted-c">{s.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 6 && (
-            <div className="flex flex-1 flex-col fade-in-right">
-              <div className="mb-4 flex items-center gap-2">
-                <MapPin className="h-6 w-6 accent-c" />
-                <h2 className="text-2xl font-extrabold text-primary-c">Друга локація</h2>
-              </div>
-              <p className="mb-4 text-sm text-secondary-c">Додайте другу адресу — наприклад, роботу — щоб бачити графік для неї поруч. Це необов'язково.</p>
-
-              {!altOblast && !altCity && !altGroup ? (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <button
-                    onClick={() => { hapticImpact('light'); }}
-                    className="d-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-secondary-c transition-all hover:scale-[1.01]"
-                  >
-                    <Plus className="h-4 w-4" /> Додати другу локацію
-                  </button>
-                  <p className="mt-4 max-w-xs text-xs text-muted-c">Якщо хочете пропустити — просто натисніть «Готово»</p>
-                </div>
-              ) : (
-                <div className="d-card space-y-3 px-3.5 py-3">
-                  <div>
-                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Назва вкладки</p>
-                    <input
-                      type="text"
-                      value={altLabel}
-                      onChange={(e) => setAltLabel(e.target.value)}
-                      maxLength={24}
-                      placeholder="Напр.: Робота, Офіс, Дача..."
-                      className="d-panel w-full rounded-xl px-3 py-2 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
-                    />
-                  </div>
-                  <div>
-                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Область</p>
-                    <select
-                      value={altOblast?.slug ?? ''}
-                      onChange={(e) => {
-                        const ob = altOblastList.find((o) => o.slug === e.target.value);
-                        if (ob) { setAltOblast(ob); setAltCity(null); setAltGroup(''); hapticImpact('light'); }
-                      }}
-                      className="d-panel w-full appearance-none rounded-xl px-3 py-2 text-sm text-primary-c outline-none focus:ring-2 focus:ring-blue-500/40"
-                    >
-                      <option value="" disabled>Оберіть область...</option>
-                      {altOblastList.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Місто</p>
-                    {altCity ? (
-                      <button
-                        onClick={() => { setAltCity(null); setAltGroup(''); setAltCitySearch(''); hapticImpact('light'); }}
-                        className="d-panel flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm"
-                      >
-                        <MapPin className="h-3.5 w-3.5 shrink-0 accent-c" />
-                        <span className="truncate font-semibold text-primary-c">{altCity.name}</span>
-                        <X className="ml-auto h-4 w-4 shrink-0 text-muted-c" />
-                      </button>
-                    ) : (
-                      <>
-                        <div className="relative mb-1.5">
-                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
-                          <input
-                            type="text"
-                            value={altCitySearch}
-                            onChange={(e) => {
-                              setAltCitySearch(e.target.value);
-                              if (!altOblast) return;
-                              const q = e.target.value.trim().toLowerCase();
-                              if (q.length >= 2) {
-                                const match = altOblastList.find((o) =>
-                                  o.name.toLowerCase().startsWith(q.slice(0, 3)) ||
-                                  o.name.toLowerCase().includes(q.slice(0, 4))
-                                );
-                                if (match && match.slug !== altOblast.slug) setAltOblast(match);
-                              }
-                            }}
-                            placeholder="Почніть вводити назву міста..."
-                            className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
-                          />
-                        </div>
-                        {!altOblast ? (
-                          <p className="py-1.5 text-center text-xs text-muted-c">Оберіть область або введіть назву міста</p>
-                        ) : altCitiesLoading ? (
-                          <div className="flex items-center justify-center gap-2 py-2 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
-                        ) : (
-                          <div className="d-panel max-h-32 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl p-1.5">
-                            {altCities
-                              .filter((c) => !altCitySearch.trim() || c.name.toLowerCase().includes(altCitySearch.toLowerCase()))
-                              .slice(0, 30)
-                              .map((city) => (
-                                <button
-                                  key={city.slug}
-                                  onClick={() => { setAltCity(city); setAltGroup(''); hapticImpact('light'); }}
-                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-secondary-c transition-all active:bg-black/5 dark:active:bg-white/5"
-                                >
-                                  <MapPin className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="truncate">{city.name}</span>
-                                </button>
-                              ))}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <div>
-                    <p className="mb-1 text-[11px] font-semibold text-secondary-c">Черга</p>
-                    <div className="grid grid-cols-6 gap-1">
-                      {ALL_GROUPS.map((group) => (
-                        <button
-                          key={group}
-                          onClick={() => { setAltGroup(group); hapticImpact('light'); }}
-                          className={`rounded-lg px-1 py-2 text-center text-xs font-bold transition-all ${
-                            altGroup === group ? 'accent-soft-bg accent-c ring-1 ring-blue-500/30' : 'd-btn text-secondary-c hover:scale-105'
-                          }`}
-                        >{group}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { setAltOblast(null); setAltCity(null); setAltGroup(''); setAltLabel(''); setAltCitySearch(''); hapticImpact('light'); }}
-                    className="w-full text-center text-xs text-muted-c"
-                  >Не додавати</button>
-                </div>
-              )}
-            </div>
-          )}
-
         </div>
 
         <div className="mx-auto mt-6 flex w-full gap-2">
@@ -928,15 +762,16 @@ function Onboarding({
           )}
           <button
             onClick={() => {
-              if (step === 6) { onFinish(); hapticNotification('success'); }
+              if (step === 4) { onFinish(); hapticNotification('success'); }
               else { setStep(step + 1); hapticImpact('light'); }
             }}
             disabled={(step === 1 && !selectedOblast) || (step === 2 && !selectedCity) || (step === 3 && !selectedGroup)}
             className="flex flex-1 items-center justify-center gap-2 rounded-2xl accent-bg py-4 text-base font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] disabled:opacity-40"
           >
             {step === 0 && <>Почнемо <ArrowRight className="h-5 w-5" /></>}
-            {(step >= 1 && step <= 5) && <>Далі <ArrowRight className="h-5 w-5" /></>}
-            {step === 6 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
+            {(step === 1 || step === 2) && <>Далі <ArrowRight className="h-5 w-5" /></>}
+            {step === 3 && <>Далі <ArrowRight className="h-5 w-5" /></>}
+            {step === 4 && <><CheckCircle2 className="h-5 w-5" /> Готово</>}
           </button>
         </div>
       </div>
@@ -1267,7 +1102,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   {
     icon: History,
-    title: 'Зміни графіка відключень',
+    title: 'Оновлення графіка',
     text: 'Ця кнопка відкриває історію змін. Коли енергетики змінюють графік — побачите що саме змінилося. Про зміни повідомить і Telegram-бот.',
     accent: 'from-amber-500 to-orange-500',
     target: '[data-tour="history"]',
@@ -1275,17 +1110,9 @@ const TOUR_STEPS: TourStep[] = [
   {
     icon: Settings,
     title: 'Налаштування',
-    text: 'Тут обирають область, місто і чергу, тему оформлення, стиль дизайну та сповіщення. Усе синхронізується з ботом.',
+    text: 'Тут обирають область, місто і чергу, тему оформлення та сповіщення. Усе синхронізується з ботом.',
     accent: 'from-slate-500 to-slate-600',
     target: '[data-tour="settings"]',
-  },
-  {
-    icon: Sparkles,
-    title: 'Стиль дизайну',
-    text: 'У налаштуваннях можна обрати між Liquid Glass і Fluent — два візуальні стилі. Спробуйте обидва і оберіть той, що більше до душі.',
-    accent: 'from-blue-500 to-indigo-500',
-    target: '[data-tour="design-style"]',
-    view: 'settings',
   },
   {
     icon: Plus,
@@ -1294,14 +1121,6 @@ const TOUR_STEPS: TourStep[] = [
     accent: 'from-violet-500 to-fuchsia-500',
     target: '[data-tour="alt-location"]',
     view: 'settings',
-  },
-  {
-    icon: MessageCircle,
-    title: 'Зв\u2019язок з розробником',
-    text: 'Помітили проблему чи є ідея? Внизу головного екрана є кнопка «Повідомити про проблему» — вона відкриває чат з розробником у Telegram.',
-    accent: 'from-teal-500 to-cyan-500',
-    target: '[data-tour="contact-dev"]',
-    view: 'schedule',
   },
 ];
 
@@ -1543,7 +1362,7 @@ function AdminView({ initData, onBack }: { initData: string; onBack: () => void 
         <div className="mt-3 flex gap-2 text-xs"><span className="flex-1 rounded-lg bg-emerald-500/12 px-3 py-2 text-emerald-600">Свіжі: <b>{stats.schedules.fresh}</b></span><span className="flex-1 rounded-lg bg-amber-500/12 px-3 py-2 text-amber-600">Проблемні: <b>{stats.schedules.stale}</b></span></div>
         <div className="mt-3 space-y-1.5 rounded-lg bg-black/4 px-3 py-2.5 dark:bg-white/6">
           <div className="flex items-center justify-between text-xs"><span className="text-secondary-c">Остання перевірка</span><b className="text-primary-c">{formatRelative(stats.schedules.lastCheckedAt)}</b></div>
-          <div className="flex items-center justify-between text-xs"><span className="text-secondary-c">Останні зміни графіка відключень</span><b className="text-primary-c">{formatRelative(stats.schedules.lastChangeAt)}</b></div>
+          <div className="flex items-center justify-between text-xs"><span className="text-secondary-c">Останнє оновлення графіка</span><b className="text-primary-c">{formatRelative(stats.schedules.lastChangeAt)}</b></div>
         </div>
         <button onClick={() => setShowCityChecks((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-1 text-[11px] accent-c">
           {showCityChecks ? 'Сховати' : 'Показати'} по містах <ChevronDown className={`h-3 w-3 transition-transform ${showCityChecks ? 'rotate-180' : ''}`} />
@@ -2073,11 +1892,6 @@ function App() {
           tgUser={tgUser}
           notifyEnabled={notifyEnabled} setNotifyEnabled={setNotifyEnabled}
           notifyMinutes={notifyMinutes} setNotifyMinutes={setNotifyMinutes}
-          designStyle={designStyle} setDesignStyle={setDesignStyle}
-          altOblast={altOblast} setAltOblast={setAltOblast} altOblastList={altOblastList}
-          altCity={altCity} setAltCity={setAltCity} altCities={altCities} altCitiesLoading={altCitiesLoading}
-          altGroup={altGroup} setAltGroup={setAltGroup} altLabel={altLabel} setAltLabel={setAltLabel}
-          altCitySearch={altCitySearch} setAltCitySearch={setAltCitySearch}
           onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); setHomeConfigured(true); setView('schedule'); }}
         />
       </div>
@@ -2106,7 +1920,7 @@ function App() {
               </div>
               <div>
                 <h1 className="text-lg font-bold leading-tight text-primary-c">
-                  {view === 'schedule' ? 'Графік світла' : view === 'changes' ? 'Зміни графіка' : view === 'admin' ? 'Адмінка' : 'Налаштування'}
+                  {view === 'schedule' ? 'Графік світла' : view === 'changes' ? 'Оновлення графіка' : view === 'admin' ? 'Адмінка' : 'Налаштування'}
                 </h1>
                 {selectedCity && view !== 'settings' ? (
                   <button onClick={() => { setView('settings'); hapticImpact('light'); }}
@@ -2173,7 +1987,7 @@ function App() {
               {view === 'schedule' && selectedCity && (
                 <button onClick={() => { setView('changes'); hapticImpact('light'); }}
                   className="relative d-btn flex h-9 w-9 items-center justify-center rounded-full"
-                  aria-label="Зміни графіка" title="Зміни графіка" data-tour="history">
+                  aria-label="Оновлення графіка" title="Оновлення графіка" data-tour="history">
                   <History className="h-4 w-4 accent-c" />
                   {unseenChanges && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
@@ -2340,25 +2154,24 @@ function App() {
                     <div className="flex items-start gap-1.5">
                       <ShieldCheck className="mt-px h-3 w-3 shrink-0 text-muted-c" />
                       <p className="text-[10px] leading-tight text-muted-c">
-                        Дані взяті з відкритих джерел<br /> 
+                        Дані з відкритих джерел.<br />Лише інформаційні, для особистого використання.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <a
-                        href="https://t.me/wt_rvng"
+                        href="https://t.me/wt.rvng"
                         target="_blank"
                         rel="noreferrer"
-                        data-tour="contact-dev"
-                        className="d-btn flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[8px] font-semibold text-secondary-c transition-colors hover:text-primary-c"
+                        className="d-btn flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-semibold text-secondary-c transition-colors hover:text-primary-c"
                         aria-label="Повідомити розробнику про проблему"
                       >
                         <MessageCircle className="h-3.5 w-3.5 accent-c" />
-                       Написати розробнику
+                        Повідомити про проблему
                       </a>
                       <div className="flex shrink-0 items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 dark:bg-white/8">
-                        <span className="text-[8px] leading-none text-muted-c">Зроблено з</span>
+                        <span className="text-[10px] leading-none text-muted-c">Зроблено з</span>
                         <Heart className="h-2.5 w-2.5 shrink-0 fill-current text-red-400" />
-                        <span className="text-[8px] leading-none text-muted-c">, by wt.rvng</span>
+                        <span className="text-[10px] leading-none text-muted-c">, by wt.rvng</span>
                       </div>
                     </div>
                   </div>
@@ -2414,7 +2227,7 @@ function App() {
             </div>
 
             {/* Design style */}
-            <div data-tour="design-style">
+            <div>
               <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-secondary-c">Стиль дизайну</h3>
               <div className="grid grid-cols-2 gap-2">
                 {DESIGN_STYLES.map((s) => (
