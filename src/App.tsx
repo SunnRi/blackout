@@ -920,7 +920,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
       .eq('oblast_slug', oblastSlug)
       .eq('city_slug', citySlug)
       .order('detected_at', { ascending: false })
-      .limit(100)
+      .limit(20)
       .then(({ data, error: err }) => {
         if (err) { setError(true); setGroups([]); return; }
         const byTime = new Map<string, ChangeGroup>();
@@ -975,23 +975,33 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
     );
   }
 
+  const latestGroup = groups[0] ?? null;
+  const todayLabel = (() => {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `Дата ${dd}.${mm}.${yyyy} (сьогодні)`;
+  })();
+
   return (
     <div className="space-y-3">
-      {lastChecked && (
-        <p className="text-center text-[11px] text-muted-c">
-          Остання перевірка: {formatChangeTime(lastChecked)}
-        </p>
+      {latestGroup && lastChecked && (
+        <div className="d-card px-3.5 py-2.5 text-center fade-in">
+          <p className="text-xs font-bold text-primary-c">{todayLabel}</p>
+          <p className="mt-0.5 text-[11px] text-muted-c">Дані оновлено {formatChangeTime(lastChecked)}</p>
+        </div>
       )}
-      {groups.map((g) => (
-        <div key={g.detectedAt} className="d-card px-3.5 py-3 fade-in">
+      {latestGroup && (
+        <div key={latestGroup.detectedAt} className="d-card px-3.5 py-3 fade-in">
           <div className="mb-2 flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg">
               <RefreshCw className="h-3 w-3 accent-c" />
             </span>
-            <span className="text-xs font-bold text-primary-c">{formatChangeTime(g.detectedAt)}</span>
+            <span className="text-xs font-bold text-primary-c">{formatChangeTime(latestGroup.detectedAt)}</span>
           </div>
           <div className="space-y-1.5">
-            {g.items.map((it, i) => (
+            {latestGroup.items.map((it, i) => (
               <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
                 <div className="flex items-center gap-1.5">
                   <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
@@ -1006,7 +1016,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
             ))}
           </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -1603,8 +1613,15 @@ function App() {
                   </>
                 )}
 
-                <footer className="mt-6 border-t border-subtle-c pt-3 text-center">
-                  <p className="text-xs text-muted-c">Дані з офіційних та неофіційних джерел</p>
+                <footer className="mt-6 border-t border-subtle-c pt-3">
+                  <div className="flex items-end justify-between gap-2">
+                    <p className="text-[10px] leading-tight text-muted-c">
+                      Дані з відкритих джерел.<br />Лише інформаційні, для особистого використання.
+                    </p>
+                    <p className="shrink-0 text-[10px] leading-tight text-muted-c">
+                      Зроблено з любов&apos;ю, by wt.rvng
+                    </p>
+                  </div>
                 </footer>
               </>
             )}
