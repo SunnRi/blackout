@@ -5,7 +5,7 @@ import {
   Sun, Moon, Clock, Info,
   Sparkles, ArrowRight, ArrowLeft, Check, RefreshCw, Keyboard,
   LayoutGrid, Gauge, Layers, History, Heart, ShieldCheck, ChevronDown,
-  Plus, Minus,
+  Plus, Minus, MoveRight,
 } from 'lucide-react';
 import { supabase, type ScheduleChange } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -825,6 +825,7 @@ function formatDayLabel(day: string): string {
 }
 
 const isOffSlot = (s: DiffSlot) => s.type === 'Definite' || s.type === 'off';
+const keyOf = (s: DiffSlot) => `${s.start}-${s.end}`;
 
 // Візуальне порівняння "Було / Стало": два рядки з часовими шкалами, де
 // червоні сегменти — відключення. Додані хвилини підсвічені червоним рамком,
@@ -834,7 +835,6 @@ const isOffSlot = (s: DiffSlot) => s.type === 'Definite' || s.type === 'off';
 // Просте відображення змін: лише кольорові бейджі — додані відключення
 // червоним, скасовані — зеленим. Без «Було / Стало», без шкал.
 function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: DiffSlot[] }) {
-  const keyOf = (s: DiffSlot) => `${s.start}-${s.end}`;
   const oldOff = oldSlots.filter(isOffSlot);
   const newOff = newSlots.filter(isOffSlot);
   const oldKeys = new Set(oldOff.map(keyOf));
@@ -843,18 +843,44 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
   const added = newOff.filter((s) => !oldKeys.has(keyOf(s)));
   const removed = oldOff.filter((s) => !newKeys.has(keyOf(s)));
 
-  const fmt = (m: number) => formatMinutes(m === 1440 ? 1439 : m);
-  const fmtRange = (s: DiffSlot) => `${fmt(s.start)} – ${fmt(s.end)}`;
+  // Match a removed slot to the added slot that replaced it (overlapping time).
+  const shifted: { from: DiffSlot; to: DiffSlot }[] = [];
+  const usedRemoved = new Set<number>();
+  const pureAdded: DiffSlot[] = [];
+  for (const a of added) {
+    const idx = removed.findIndex((r, i) =>
+      !usedRemoved.has(i) && r.start < a.end && a.start < r.end);
+    if (idx >= 0) {
+      usedRemoved.add(idx);
+      shifted.push({ from: removed[idx], to: a });
+    } else {
+      pureAdded.push(a);
+    }
+  }
+  const pureRemoved = removed.filter((_, i) => !usedRemoved.has(i));
 
-  if (added.length === 0 && removed.length === 0) {
+  const fmt = (m: number) => formatMinutes(m === 1440 ? 1439 : m);
+  const fmtRange = (s: DiffSlot) => `${fmt(s.start)}–${fmt(s.end)}`;
+
+  if (shifted.length === 0 && pureAdded.length === 0 && pureRemoved.length === 0) {
     return (
       <p className="mt-1.5 text-xs text-secondary-c">Час відключень не змінився</p>
     );
   }
 
   return (
-    <div className="mt-1.5 space-y-1">
-      {added.map((s, i) => (
+    <div className="mt-1.5 space-y-1.5">
+      {shifted.map(({ from, to }, i) => (
+        <div key={`sh${i}`} className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5">
+          <MoveRight className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+          <span className="text-xs font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <span className="text-secondary-c line-through decoration-1 opacity-70">{fmtRange(from)}</span>
+            <span className="diff-arrow mx-1.5 inline-block text-amber-500">→</span>
+            <span className="text-primary-c">{fmtRange(to)}</span>
+          </span>
+        </div>
+      ))}
+      {pureAdded.map((s, i) => (
         <div
           key={`a${i}`}
           className="flex items-center gap-1.5 rounded-lg bg-red-500/12 px-2.5 py-1.5"
@@ -866,7 +892,7 @@ function DiffTimeline({ oldSlots, newSlots }: { oldSlots: DiffSlot[]; newSlots: 
           </span>
         </div>
       ))}
-      {removed.map((s, i) => (
+      {pureRemoved.map((s, i) => (
         <div
           key={`r${i}`}
           className="flex items-center gap-1.5 rounded-lg bg-emerald-500/12 px-2.5 py-1.5"

@@ -715,3 +715,11 @@
 .dark .segmented-item:not(.active):hover { background: rgba(255, 255, 255, 0.06); }
 
 button { -webkit-tap-highlight-color: transparent; }
+
+/* "Було → Стало" arrow: slides in from the left once */
+@keyframes diffArrowSlide {
+  0%   { opacity: 0; transform: translateX(-8px); }
+  60%  { opacity: 1; transform: translateX(3px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.diff-arrow { animation: diffArrowSlide 0.5s ease-out 0.15s backwards; }
