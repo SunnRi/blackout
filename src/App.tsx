@@ -911,6 +911,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
   const [groups, setGroups] = useState<ChangeGroup[] | null>(null);
   const [error, setError] = useState(false);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [changeDayTab, setChangeDayTab] = useState<'today' | 'tomorrow'>('today');
 
   useEffect(() => {
     setGroups(null); setError(false);
@@ -975,47 +976,78 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
     );
   }
 
-  const latestGroup = groups[0] ?? null;
-  const todayLabel = (() => {
-    const d = new Date();
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `Дата ${dd}.${mm}.${yyyy} (сьогодні)`;
-  })();
+  const filteredGroups = groups.filter((g) =>
+    g.items.some((it) => {
+      const label = formatScheduleDate(it.scheduleDate, it.day);
+      return changeDayTab === 'today' ? label === 'сьогодні' : label === 'завтра';
+    }),
+  );
+
+  const hasToday = groups.some((g) => g.items.some((it) => formatScheduleDate(it.scheduleDate, it.day) === 'сьогодні'));
+  const hasTomorrow = groups.some((g) => g.items.some((it) => formatScheduleDate(it.scheduleDate, it.day) === 'завтра'));
 
   return (
     <div className="space-y-3">
-      {latestGroup && lastChecked && (
+      {/* Day tabs */}
+      <div className="flex justify-center fade-in-delay-1">
+        <div className="segmented">
+          <button onClick={() => { setChangeDayTab('today'); hapticImpact('light'); }}
+            className={`segmented-item px-5 py-1.5 text-sm font-semibold ${changeDayTab === 'today' ? 'active text-primary-c' : 'text-secondary-c'}`}
+          >Сьогодні</button>
+          <button onClick={() => { setChangeDayTab('tomorrow'); hapticImpact('light'); }}
+            className={`segmented-item px-5 py-1.5 text-sm font-semibold ${changeDayTab === 'tomorrow' ? 'active text-primary-c' : 'text-secondary-c'}`}
+          >Завтра{hasTomorrow && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" />}</button>
+        </div>
+      </div>
+
+      {lastChecked && (
         <div className="d-card px-3.5 py-2.5 text-center fade-in">
-          <p className="text-xs font-bold text-primary-c">{todayLabel}</p>
-          <p className="mt-0.5 text-[11px] text-muted-c">Дані оновлено {formatChangeTime(lastChecked)}</p>
+          <p className="text-[11px] text-muted-c">Перевірено {formatChangeTime(lastChecked)}</p>
         </div>
       )}
-      {latestGroup && (
-        <div key={latestGroup.detectedAt} className="d-card px-3.5 py-3 fade-in">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg">
-              <RefreshCw className="h-3 w-3 accent-c" />
-            </span>
-            <span className="text-xs font-bold text-primary-c">{formatChangeTime(latestGroup.detectedAt)}</span>
-          </div>
-          <div className="space-y-1.5">
-            {latestGroup.items.map((it, i) => (
-              <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
-                <div className="flex items-center gap-1.5">
-                  <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
-                  <span className="text-[10px] text-muted-c">{formatScheduleDate(it.scheduleDate, it.day)}</span>
-                </div>
-                {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
-                  <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
-                ) : (
-                  <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
-                )}
-              </div>
-            ))}
-          </div>
+
+      {filteredGroups.length === 0 ? (
+        <div className="d-card py-10 text-center fade-in">
+          <History className="mx-auto mb-2 h-10 w-10 text-muted-c" />
+          <p className="text-sm font-semibold text-primary-c">
+            {changeDayTab === 'today' ? 'Сьогодні змін не було' : 'На завтра змін ще немає'}
+          </p>
+          <p className="mx-auto mt-1 max-w-xs text-xs text-secondary-c">
+            {changeDayTab === 'today'
+              ? 'Ми стежимо за графіком — щойно енергетики щось змінять, тут з\'явиться, що саме.'
+              : 'Щойно з\'явиться оновлений графік на завтра, побачите його тут.'}
+          </p>
         </div>
+      ) : (
+        filteredGroups.map((g) => (
+          <div key={g.detectedAt} className="d-card px-3.5 py-3 fade-in">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full accent-soft-bg">
+                <RefreshCw className="h-3 w-3 accent-c" />
+              </span>
+              <span className="text-xs font-bold text-primary-c">{formatChangeTime(g.detectedAt)}</span>
+            </div>
+            <div className="space-y-1.5">
+              {g.items
+                .filter((it) => {
+                  const label = formatScheduleDate(it.scheduleDate, it.day);
+                  return changeDayTab === 'today' ? label === 'сьогодні' : label === 'завтра';
+                })
+                .map((it, i) => (
+                  <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
+                    </div>
+                    {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
+                      <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
+                    ) : (
+                      <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </div>
+        ))
       )}
     </div>
   );
@@ -1638,7 +1670,7 @@ function App() {
           <div className="fade-in">
             <p className="mb-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-c">
               <RefreshCw className="h-3 w-3" />
-              <span>Стежимо за графіком щогодини · {selectedCity.name}</span>
+              <span>Стежимо за графіком · {selectedCity.name}</span>
             </p>
             <ChangeHistory oblastSlug={selectedOblast.slug} citySlug={selectedCity.slug} />
             <button
