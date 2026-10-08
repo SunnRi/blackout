@@ -486,10 +486,11 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
             className={`d-card hover-lift flex items-center gap-3 px-4 py-3 ${
               active
                 ? isOff
-                  ? 'bg-red-500/15 ring-1 ring-inset ring-red-500/25'
-                  : 'bg-emerald-500/15 ring-1 ring-inset ring-emerald-500/25'
+                  ? 'ring-1 ring-inset ring-red-500/30'
+                  : 'ring-1 ring-inset ring-emerald-500/30'
                 : isPast ? 'opacity-40' : ''
             }`}
+            style={active ? { backgroundColor: isOff ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)' } : undefined}
           >
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isOff ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
               {isOff
@@ -1643,7 +1644,7 @@ function App() {
                         <p className="max-w-xs px-4 text-sm text-secondary-c">Графік відключень ще не опубліковано. Очікуємо оновлення інформації</p>
                       </div>
                     ) : (
-                      <CompactList slots={dayTab === 'today' ? todaySlots : tomorrowSlots} now={now} isToday={dayTab === 'today'} limit={3} />
+                      <CompactList slots={dayTab === 'today' ? todaySlots : tomorrowSlots} now={now} isToday={dayTab === 'today'} />
                     )}
                   </div>
                 )}
