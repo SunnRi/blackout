@@ -1577,11 +1577,23 @@ function App() {
   const [obStep, setObStep] = useState(0);
 
   const [oblasts, setOblasts] = useState<Oblast[]>([]);
-  const [selectedOblast, setSelectedOblast] = useState<Oblast | null>(null);
+  const [selectedOblast, setSelectedOblast] = useState<Oblast | null>(() => {
+    try {
+      const s = localStorage.getItem('selectedOblast');
+      return s ? JSON.parse(s) : null;
+    } catch { return null; }
+  });
   const [cities, setCities] = useState<City[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
-  const [selectedCity, setSelectedCity] = useState<City | null>(null);
-  const [selectedGroup, setSelectedGroup] = useState<string>('');
+  const [selectedCity, setSelectedCity] = useState<City | null>(() => {
+    try {
+      const s = localStorage.getItem('selectedCity');
+      return s ? JSON.parse(s) : null;
+    } catch { return null; }
+  });
+  const [selectedGroup, setSelectedGroup] = useState<string>(() => {
+    return localStorage.getItem('selectedGroup') ?? '';
+  });
   const [availableGroups, setAvailableGroups] = useState<string[]>([]);
   const [todaySchedule, setTodaySchedule] = useState<CitySchedule | null>(null);
   const [tomorrowSchedule, setTomorrowSchedule] = useState<CitySchedule | null>(null);
@@ -1590,20 +1602,41 @@ function App() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [citySearchSettings, setCitySearchSettings] = useState('');
 
-  const [notifyEnabled, setNotifyEnabled] = useState(true);
-  const [notifyMinutes, setNotifyMinutes] = useState(60);
+  const [notifyEnabled, setNotifyEnabled] = useState<boolean>(() => {
+    const s = localStorage.getItem('notifyEnabled');
+    return s !== null ? s === '1' : true;
+  });
+  const [notifyMinutes, setNotifyMinutes] = useState<number>(() => {
+    const s = localStorage.getItem('notifyMinutes');
+    return s ? Number(s) || 60 : 60;
+  });
   const [saved, setSaved] = useState(false);
 
   // Second location ("work") — optional, configured in settings only.
-  const [altOblast, setAltOblast] = useState<Oblast | null>(null);
-  const [altCity, setAltCity] = useState<City | null>(null);
-  const [altGroup, setAltGroup] = useState('');
-  const [altLabel, setAltLabel] = useState('');
-  const [homeLabel, setHomeLabel] = useState('');
-  const [activeLocation, setActiveLocation] = useState<'home' | 'work'>('home');
+  const [altOblast, setAltOblast] = useState<Oblast | null>(() => {
+    try {
+      const s = localStorage.getItem('altOblast');
+      return s ? JSON.parse(s) : null;
+    } catch { return null; }
+  });
+  const [altCity, setAltCity] = useState<City | null>(() => {
+    try {
+      const s = localStorage.getItem('altCity');
+      return s ? JSON.parse(s) : null;
+    } catch { return null; }
+  });
+  const [altGroup, setAltGroup] = useState(() => localStorage.getItem('altGroup') ?? '');
+  const [altLabel, setAltLabel] = useState(() => localStorage.getItem('altLabel') ?? '');
+  const [homeLabel, setHomeLabel] = useState(() => localStorage.getItem('homeLabel') ?? '');
+  const [activeLocation, setActiveLocation] = useState<'home' | 'work'>(() => {
+    const s = localStorage.getItem('activeLocation');
+    return s === 'work' ? 'work' : 'home';
+  });
   const [altExpanded, setAltExpanded] = useState(false);
   const [homeExpanded, setHomeExpanded] = useState(false);
-  const [homeConfigured, setHomeConfigured] = useState(false);
+  const [homeConfigured, setHomeConfigured] = useState(() => {
+    return Boolean(localStorage.getItem('selectedCity') && localStorage.getItem('selectedGroup'));
+  });
   const [altOblastList, setAltOblastList] = useState<Oblast[]>(oblasts);
   const [altCities, setAltCities] = useState<City[]>([]);
   const [altCitiesLoading, setAltCitiesLoading] = useState(false);
@@ -1618,6 +1651,59 @@ function App() {
   // must never overwrite a choice the user just made.
   const hasSelectionRef = useRef(false);
   hasSelectionRef.current = Boolean(selectedOblast || selectedCity || selectedGroup);
+
+  // Immediate localStorage persistence: guarantees 0ms restore on reopen
+  useEffect(() => {
+    if (selectedOblast) localStorage.setItem('selectedOblast', JSON.stringify(selectedOblast));
+    else localStorage.removeItem('selectedOblast');
+  }, [selectedOblast]);
+
+  useEffect(() => {
+    if (selectedCity) localStorage.setItem('selectedCity', JSON.stringify(selectedCity));
+    else localStorage.removeItem('selectedCity');
+  }, [selectedCity]);
+
+  useEffect(() => {
+    if (selectedGroup) localStorage.setItem('selectedGroup', selectedGroup);
+    else localStorage.removeItem('selectedGroup');
+  }, [selectedGroup]);
+
+  useEffect(() => {
+    if (altOblast) localStorage.setItem('altOblast', JSON.stringify(altOblast));
+    else localStorage.removeItem('altOblast');
+  }, [altOblast]);
+
+  useEffect(() => {
+    if (altCity) localStorage.setItem('altCity', JSON.stringify(altCity));
+    else localStorage.removeItem('altCity');
+  }, [altCity]);
+
+  useEffect(() => {
+    if (altGroup) localStorage.setItem('altGroup', altGroup);
+    else localStorage.removeItem('altGroup');
+  }, [altGroup]);
+
+  useEffect(() => {
+    if (altLabel) localStorage.setItem('altLabel', altLabel);
+    else localStorage.removeItem('altLabel');
+  }, [altLabel]);
+
+  useEffect(() => {
+    if (homeLabel) localStorage.setItem('homeLabel', homeLabel);
+    else localStorage.removeItem('homeLabel');
+  }, [homeLabel]);
+
+  useEffect(() => {
+    localStorage.setItem('activeLocation', activeLocation);
+  }, [activeLocation]);
+
+  useEffect(() => {
+    localStorage.setItem('notifyEnabled', notifyEnabled ? '1' : '0');
+  }, [notifyEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('notifyMinutes', String(notifyMinutes));
+  }, [notifyMinutes]);
 
   // Red dot on the history button: set when the latest change for this city is
   // newer than the last time the user opened the changes tab.
@@ -1842,33 +1928,40 @@ function App() {
         };
         if (cancelled) return;
         const prefs = json.prefs;
-        if (prefs && !hasSelectionRef.current) {
+        if (prefs) {
           setNotifyEnabled(prefs.notify_enabled);
           setNotifyMinutes(prefs.notify_minutes_before);
           // Use per-city seen timestamp if available, fall back to legacy.
           const seenAt = json.city_seen_at ?? prefs.last_seen_changes_at;
           if (seenAt) lastSeenChangeRef.current = seenAt;
-          if (prefs.oblast_slug) {
-            const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug);
-            if (oblast) setSelectedOblast(oblast);
+
+          // If local selection was empty (e.g. fresh device or cleared storage), restore home location from server:
+          if (!selectedCity || !selectedGroup) {
+            if (prefs.oblast_slug) {
+              const oblast = oblasts.find((o) => o.slug === prefs.oblast_slug) ?? { slug: prefs.oblast_slug, name: prefs.oblast_slug };
+              setSelectedOblast(oblast);
+            }
+            if (prefs.city_slug && prefs.queue_group) {
+              if (prefs.city_name) setSelectedCity({ slug: prefs.city_slug, name: prefs.city_name });
+              setSelectedGroup(prefs.queue_group);
+              setOnboarded(true);
+              setHomeConfigured(true);
+              localStorage.setItem('onboarded', '1');
+            }
           }
-          if (prefs.city_slug && prefs.queue_group) {
-            if (prefs.city_name) setSelectedCity({ slug: prefs.city_slug, name: prefs.city_name });
-            setSelectedGroup(prefs.queue_group);
-            setOnboarded(true);
-            setHomeConfigured(true);
-            localStorage.setItem('onboarded', '1');
-          }
-          // Restore the second location if it's configured.
-          if (prefs.alt_oblast_slug && prefs.alt_city_slug && prefs.alt_queue_group) {
-            const altOb = oblasts.find((o) => o.slug === prefs.alt_oblast_slug) ?? null;
+
+          // Restore the second location if configured on server and missing locally:
+          if (prefs.alt_oblast_slug && prefs.alt_city_slug && prefs.alt_queue_group && (!altCity || !altGroup)) {
+            const altOb = oblasts.find((o) => o.slug === prefs.alt_oblast_slug) ?? { slug: prefs.alt_oblast_slug, name: prefs.alt_oblast_slug };
             setAltOblast(altOb);
-            if (prefs.alt_city_name && altOb) setAltCity({ slug: prefs.alt_city_slug, name: prefs.alt_city_name });
+            if (prefs.alt_city_name) setAltCity({ slug: prefs.alt_city_slug, name: prefs.alt_city_name });
             setAltGroup(prefs.alt_queue_group);
             setAltLabel((prefs as { alt_label?: string | null }).alt_label ?? '');
             setHomeLabel((prefs as { home_label?: string | null }).home_label ?? '');
           }
-          if (prefs.active_location === 'work') setActiveLocation('work');
+          if (prefs.active_location === 'work' && !localStorage.getItem('activeLocation')) {
+            setActiveLocation('work');
+          }
         }
         setPrefsChecked(true);
       })
@@ -2025,7 +2118,15 @@ function App() {
           tgUser={tgUser}
           notifyEnabled={notifyEnabled} setNotifyEnabled={setNotifyEnabled}
           notifyMinutes={notifyMinutes} setNotifyMinutes={setNotifyMinutes}
-          onFinish={() => { localStorage.setItem('onboarded', '1'); setOnboarded(true); setHomeConfigured(true); setView('schedule'); }}
+          onFinish={() => {
+            if (selectedOblast) localStorage.setItem('selectedOblast', JSON.stringify(selectedOblast));
+            if (selectedCity) localStorage.setItem('selectedCity', JSON.stringify(selectedCity));
+            if (selectedGroup) localStorage.setItem('selectedGroup', selectedGroup);
+            localStorage.setItem('onboarded', '1');
+            setOnboarded(true);
+            setHomeConfigured(true);
+            setView('schedule');
+          }}
         />
       </div>
     );
@@ -2720,6 +2821,15 @@ function App() {
                   }
                   localStorage.removeItem('onboarded');
                   localStorage.removeItem('tourDone');
+                  localStorage.removeItem('selectedOblast');
+                  localStorage.removeItem('selectedCity');
+                  localStorage.removeItem('selectedGroup');
+                  localStorage.removeItem('altOblast');
+                  localStorage.removeItem('altCity');
+                  localStorage.removeItem('altGroup');
+                  localStorage.removeItem('altLabel');
+                  localStorage.removeItem('homeLabel');
+                  localStorage.removeItem('activeLocation');
                   loadedCityKeyRef.current = '';
                   homeBackupRef.current = null;
                   hasSelectionRef.current = false;
