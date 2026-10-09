@@ -29,7 +29,7 @@ async function getCronSecret(): Promise<string | null> {
 }
 
 const RETENTION_DAYS = 14;
-const MINI_APP_URL = Deno.env.get("MINI_APP_URL") ?? "https://botsvitla.bolt.host";
+const MINI_APP_URL = Deno.env.get("MINI_APP_URL") ?? "https://blackout.juvelirbc.com.ua";
 
 // Minimum number of queues and minimum total slots we expect from a healthy
 // source. If a fetch returns fewer, we treat the source as broken rather than

@@ -13,7 +13,7 @@ const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
-const MINI_APP_URL = "https://botsvitla.bolt.host";
+const MINI_APP_URL = "https://blackout.juvelirbc.com.ua";
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 const BEZSVITLA_BASE = "https://bezsvitla.com.ua";
