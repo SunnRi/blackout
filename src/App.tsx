@@ -153,6 +153,14 @@ function getInitialDesignStyle(): DesignStyle {
   return saved === 'fluent' ? 'fluent' : 'glass';
 }
 
+function normalizeSearch(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[іïиы]/g, 'и')
+    .replace(/[еєэё]/g, 'е')
+    .replace(/[’'`ʼ\s-]/g, '');
+}
+
 // ── Aurora background (glass design) ──────────────────────────
 function Aurora() {
   return (
@@ -556,10 +564,32 @@ function Onboarding({
   setNotifyMinutes: (v: number) => void;
 }) {
   const [citySearch, setCitySearch] = useState(() => selectedCity?.name ?? '');
+
+  // Keep search input synced if selectedCity changes
+  useEffect(() => {
+    if (selectedCity?.name && !citySearch) {
+      setCitySearch(selectedCity.name);
+    }
+  }, [selectedCity]);
+
   const filtered = useMemo(() => {
     if (!citySearch.trim()) return cities;
-    const q = citySearch.toLowerCase();
-    return cities.filter((c) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
+    const raw = citySearch.trim().toLowerCase();
+    const norm = normalizeSearch(raw);
+    const matches = cities.filter((c) => {
+      const nameLower = c.name.toLowerCase();
+      const slugLower = c.slug.toLowerCase();
+      if (nameLower.includes(raw) || slugLower.includes(raw)) return true;
+      if (normalizeSearch(nameLower).includes(norm) || normalizeSearch(slugLower).includes(norm)) return true;
+      return false;
+    });
+    matches.sort((a, b) => {
+      const aStarts = a.name.toLowerCase().startsWith(raw) ? 0 : 1;
+      const bStarts = b.name.toLowerCase().startsWith(raw) ? 0 : 1;
+      if (aStarts !== bStarts) return aStarts - bStarts;
+      return a.name.localeCompare(b.name, 'uk');
+    });
+    return matches;
   }, [cities, citySearch]);
 
   const totalSteps = 5;
@@ -627,15 +657,77 @@ function Onboarding({
               <div className="relative mb-2">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
                 <input
-                  type="text" value={citySearch} onChange={(e) => setCitySearch(e.target.value)}
+                  type="text"
+                  value={citySearch}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCitySearch(val);
+                    const q = val.trim().toLowerCase();
+                    if (q) {
+                      const exact = cities.find((c) => c.name.toLowerCase() === q);
+                      if (exact && selectedCity?.slug !== exact.slug) {
+                        setSelectedCity(exact);
+                        setSelectedGroup('');
+                      }
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (filtered.length > 0) {
+                        const topCity = filtered[0];
+                        setSelectedCity(topCity);
+                        setCitySearch(topCity.name);
+                        setSelectedGroup('');
+                        hapticImpact('light');
+                        setStep(3);
+                      }
+                    }
+                  }}
                   placeholder="Пошук міста..."
-                  className="d-panel w-full rounded-xl py-2.5 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="d-panel w-full rounded-xl py-2.5 pl-10 pr-10 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
+                {citySearch && (
+                  <button
+                    type="button"
+                    onClick={() => { setCitySearch(''); setSelectedCity(null); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-c hover:text-primary-c"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
+
+              {/* Quick suggestion / автопідстановка banner */}
+              {filtered.length > 0 && citySearch.trim() && (
+                <div className="mb-2.5 flex items-center justify-between rounded-xl accent-soft-bg px-3 py-2 text-xs fade-in">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Sparkles className="h-3.5 w-3.5 shrink-0 accent-c" />
+                    <span className="truncate text-secondary-c">
+                      Підстановка: <b className="text-primary-c">{filtered[0].name}</b>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const topCity = filtered[0];
+                      setSelectedCity(topCity);
+                      setCitySearch(topCity.name);
+                      setSelectedGroup('');
+                      hapticImpact('light');
+                      setStep(3);
+                    }}
+                    className="ml-2 shrink-0 rounded-lg accent-bg px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:scale-105 active:scale-95 transition-all"
+                  >
+                    Обрати ↵
+                  </button>
+                </div>
+              )}
+
               <div className="mb-3 flex items-start gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(10,132,255,0.08)' }}>
                 <Keyboard className="mt-0.5 h-4 w-4 shrink-0 accent-c" />
                 <p className="text-xs leading-relaxed text-secondary-c">
-                  <b className="text-primary-c">Почніть вводити назву міста</b> — список відфільтрується автоматично. Київ також шукайте тут.
+                  <b className="text-primary-c">Введіть перші букви</b> — місто підставиться автоматично. Натисніть <b>Enter</b> або оберіть зі списку.
                 </p>
               </div>
               <div className="d-panel scroll-touch space-y-0.5 overflow-y-auto overscroll-contain rounded-2xl p-1.5" style={{ height: 'min(320px, 42vh)', WebkitOverflowScrolling: 'touch' }}>
@@ -648,7 +740,12 @@ function Onboarding({
                     {filtered.map((city) => (
                       <button
                         key={city.slug}
-                        onClick={() => { setSelectedCity(city); setSelectedGroup(''); hapticImpact('light'); }}
+                        onClick={() => {
+                          setSelectedCity(city);
+                          setCitySearch(city.name);
+                          setSelectedGroup('');
+                          hapticImpact('light');
+                        }}
                         className={`flex w-full shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
                           selectedCity?.slug === city.slug ? 'accent-soft-bg font-semibold accent-c' : 'text-secondary-c active:bg-black/5 dark:active:bg-white/5'
                         }`}
@@ -762,10 +859,23 @@ function Onboarding({
           )}
           <button
             onClick={() => {
+              if (step === 2 && !selectedCity && filtered.length > 0) {
+                const topCity = filtered[0];
+                setSelectedCity(topCity);
+                setCitySearch(topCity.name);
+                setSelectedGroup('');
+                hapticImpact('light');
+                setStep(3);
+                return;
+              }
               if (step === 4) { onFinish(); hapticNotification('success'); }
               else { setStep(step + 1); hapticImpact('light'); }
             }}
-            disabled={(step === 1 && !selectedOblast) || (step === 2 && !selectedCity) || (step === 3 && !selectedGroup)}
+            disabled={
+              (step === 1 && !selectedOblast) ||
+              (step === 2 && !selectedCity && filtered.length === 0) ||
+              (step === 3 && !selectedGroup)
+            }
             className="flex flex-1 items-center justify-center gap-2 rounded-2xl accent-bg py-4 text-base font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] disabled:opacity-40"
           >
             {step === 0 && <>Почнемо <ArrowRight className="h-5 w-5" /></>}
@@ -2082,9 +2192,43 @@ function App() {
 
   const filteredSettingsCities = useMemo(() => {
     if (!citySearchSettings.trim()) return cities;
-    const q = citySearchSettings.toLowerCase();
-    return cities.filter((c) => c.name.toLowerCase().includes(q) || c.slug.includes(q));
+    const raw = citySearchSettings.trim().toLowerCase();
+    const norm = normalizeSearch(raw);
+    const matches = cities.filter((c) => {
+      const nameLower = c.name.toLowerCase();
+      const slugLower = c.slug.toLowerCase();
+      if (nameLower.includes(raw) || slugLower.includes(raw)) return true;
+      if (normalizeSearch(nameLower).includes(norm) || normalizeSearch(slugLower).includes(norm)) return true;
+      return false;
+    });
+    matches.sort((a, b) => {
+      const aStarts = a.name.toLowerCase().startsWith(raw) ? 0 : 1;
+      const bStarts = b.name.toLowerCase().startsWith(raw) ? 0 : 1;
+      if (aStarts !== bStarts) return aStarts - bStarts;
+      return a.name.localeCompare(b.name, 'uk');
+    });
+    return matches;
   }, [cities, citySearchSettings]);
+
+  const filteredAltCities = useMemo(() => {
+    if (!altCitySearch.trim()) return altCities;
+    const raw = altCitySearch.trim().toLowerCase();
+    const norm = normalizeSearch(raw);
+    const matches = altCities.filter((c) => {
+      const nameLower = c.name.toLowerCase();
+      const slugLower = c.slug.toLowerCase();
+      if (nameLower.includes(raw) || slugLower.includes(raw)) return true;
+      if (normalizeSearch(nameLower).includes(norm) || normalizeSearch(slugLower).includes(norm)) return true;
+      return false;
+    });
+    matches.sort((a, b) => {
+      const aStarts = a.name.toLowerCase().startsWith(raw) ? 0 : 1;
+      const bStarts = b.name.toLowerCase().startsWith(raw) ? 0 : 1;
+      if (aStarts !== bStarts) return aStarts - bStarts;
+      return a.name.localeCompare(b.name, 'uk');
+    });
+    return matches;
+  }, [altCities, altCitySearch]);
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-primary-c">
@@ -2553,29 +2697,63 @@ function App() {
                             type="text"
                             value={altCitySearch}
                             onChange={(e) => {
-                              setAltCitySearch(e.target.value);
-                              if (!altOblast) return;
-                              const q = e.target.value.trim().toLowerCase();
-                              if (q.length >= 2) {
-                                const match = altOblastList.find((o) =>
-                                  o.name.toLowerCase().startsWith(q.slice(0, 3)) ||
-                                  o.name.toLowerCase().includes(q.slice(0, 4))
-                                );
-                                if (match && match.slug !== altOblast.slug) setAltOblast(match);
+                              const val = e.target.value;
+                              setAltCitySearch(val);
+                              const q = val.trim().toLowerCase();
+                              if (q.length > 0) {
+                                const exact = altCities.find((c) => c.name.toLowerCase() === q);
+                                if (exact) {
+                                  setAltCity(exact);
+                                  setAltGroup('');
+                                }
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                if (filteredAltCities.length > 0) {
+                                  const top = filteredAltCities[0];
+                                  setAltCity(top);
+                                  setAltGroup('');
+                                  setAltCitySearch('');
+                                  hapticImpact('light');
+                                }
                               }
                             }}
                             placeholder="Почніть вводити назву міста..."
                             className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                           />
                         </div>
+                        {filteredAltCities.length > 0 && altCitySearch.trim() && (
+                          <div className="mb-2 flex items-center justify-between rounded-xl accent-soft-bg px-3 py-1.5 text-xs fade-in">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Sparkles className="h-3 w-3 shrink-0 accent-c" />
+                              <span className="truncate text-secondary-c">
+                                Підстановка: <b className="text-primary-c">{filteredAltCities[0].name}</b>
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const top = filteredAltCities[0];
+                                setAltCity(top);
+                                setAltGroup('');
+                                setAltCitySearch('');
+                                hapticImpact('light');
+                              }}
+                              className="ml-2 shrink-0 rounded-lg accent-bg px-2 py-0.5 text-[11px] font-bold text-white shadow-sm hover:scale-105 active:scale-95 transition-all"
+                            >
+                              Обрати ↵
+                            </button>
+                          </div>
+                        )}
                         {!altOblast ? (
                           <p className="py-1.5 text-center text-xs text-muted-c">Оберіть область або введіть назву міста</p>
                         ) : altCitiesLoading ? (
                           <div className="flex items-center justify-center gap-2 py-2 text-xs text-secondary-c"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Завантаження...</div>
                         ) : (
                           <div className="d-panel max-h-32 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl p-1.5">
-                            {altCities
-                              .filter((c) => !altCitySearch.trim() || c.name.toLowerCase().includes(altCitySearch.toLowerCase()))
+                            {filteredAltCities
                               .slice(0, 30)
                               .map((city) => (
                                 <button
@@ -2587,7 +2765,7 @@ function App() {
                                   <span className="truncate">{city.name}</span>
                                 </button>
                               ))}
-                            {altCities.filter((c) => !altCitySearch.trim() || c.name.toLowerCase().includes(altCitySearch.toLowerCase())).length === 0 && (
+                            {filteredAltCities.length === 0 && (
                               <p className="py-2 text-center text-xs text-muted-c">Не знайдено</p>
                             )}
                           </div>
@@ -2682,17 +2860,33 @@ function App() {
                     <div className="relative mb-1.5">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-c" />
                       <input
-                        type="text" value={citySearchSettings}
+                        type="text"
+                        value={citySearchSettings}
                         onChange={(e) => {
-                          setCitySearchSettings(e.target.value);
-                          const q = e.target.value.trim().toLowerCase();
-                          if (q.length >= 2) {
-                            const match = oblasts.find((o) =>
-                              o.name.toLowerCase().startsWith(q.slice(0, 3)) ||
-                              o.name.toLowerCase().includes(q.slice(0, 4))
-                            );
-                            if (match && match.slug !== selectedOblast?.slug) {
-                              setSelectedOblast(match); setSelectedGroup(''); setTodaySchedule(null); setTomorrowSchedule(null);
+                          const val = e.target.value;
+                          setCitySearchSettings(val);
+                          const q = val.trim().toLowerCase();
+                          if (q.length > 0) {
+                            const exact = cities.find((c) => c.name.toLowerCase() === q);
+                            if (exact) {
+                              setSelectedCity(exact);
+                              setSelectedGroup('');
+                              setTodaySchedule(null);
+                              setTomorrowSchedule(null);
+                            }
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (filteredSettingsCities.length > 0) {
+                              const top = filteredSettingsCities[0];
+                              setSelectedCity(top);
+                              setSelectedGroup('');
+                              setCitySearchSettings('');
+                              setTodaySchedule(null);
+                              setTomorrowSchedule(null);
+                              hapticImpact('light');
                             }
                           }
                         }}
@@ -2700,6 +2894,31 @@ function App() {
                         className="d-panel w-full rounded-xl py-2 pl-10 pr-3 text-sm text-primary-c placeholder:text-muted-c outline-none focus:ring-2 focus:ring-blue-500/40"
                       />
                     </div>
+                    {filteredSettingsCities.length > 0 && citySearchSettings.trim() && (
+                      <div className="mb-2 flex items-center justify-between rounded-xl accent-soft-bg px-3 py-1.5 text-xs fade-in">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Sparkles className="h-3 w-3 shrink-0 accent-c" />
+                          <span className="truncate text-secondary-c">
+                            Підстановка: <b className="text-primary-c">{filteredSettingsCities[0].name}</b>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const top = filteredSettingsCities[0];
+                            setSelectedCity(top);
+                            setSelectedGroup('');
+                            setCitySearchSettings('');
+                            setTodaySchedule(null);
+                            setTomorrowSchedule(null);
+                            hapticImpact('light');
+                          }}
+                          className="ml-2 shrink-0 rounded-lg accent-bg px-2 py-0.5 text-[11px] font-bold text-white shadow-sm hover:scale-105 active:scale-95 transition-all"
+                        >
+                          Обрати ↵
+                        </button>
+                      </div>
+                    )}
                     {!selectedOblast ? (
                       <p className="py-1.5 text-center text-xs text-muted-c">Оберіть область або введіть назву міста</p>
                     ) : citiesLoading ? (
