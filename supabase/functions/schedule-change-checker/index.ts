@@ -287,7 +287,21 @@ async function checkCity(
       const key = `${sched.queue}|${day.date}`;
       const prevFp = prev.get(key)?.fingerprint;
       if (prevFp === undefined) {
-        // First sighting of this queue for this date: baseline only.
+        // First sighting of this queue for this date.
+        // When tomorrow's schedule is published for the first time, record and notify users!
+        if (day.label === "tomorrow" && sched.slots.length > 0) {
+          changes.push({
+            oblast_slug: oblastSlug,
+            city_slug: citySlug,
+            queue: sched.queue,
+            day: day.label,
+            schedule_date: day.date,
+            change_type: "added",
+            summary: "Графік на завтра був доданий. Графік вже доступний у додатку",
+            old_slots: null,
+            new_slots: sched.slots,
+          });
+        }
       } else if (prevFp !== fp) {
         const prevSlots = prevFp.split("|").filter(Boolean).map((s) => {
           const [range, type] = s.split(":");
@@ -442,11 +456,12 @@ async function processOutbox(): Promise<number> {
     // Fetch the change details for the message.
     const { data: changeRow } = await supabase
       .from("schedule_change_log")
-      .select("queue, summary, day, schedule_date")
+      .select("queue, summary, day, schedule_date, change_type")
       .eq("id", item.change_id)
       .maybeSingle();
 
-    const change = changeRow as { queue: string; summary: string; day: string; schedule_date: string | null } | null;
+    const change = changeRow as { queue: string; summary: string; day: string; schedule_date: string | null; change_type: string } | null;
+    const isTomorrowAdded = change?.day === "tomorrow" && change?.change_type === "added";
     const dayLabel = change?.day === "tomorrow" ? " на завтра" : change?.day === "today" ? " на сьогодні" : "";
 
     // Check if the user was already notified about a schedule update within the last 3 hours
@@ -472,10 +487,18 @@ async function processOutbox(): Promise<number> {
       supplementTitle = `🔔 <b>Оновлення графіків</b> (Доповнено о ${kyivTime})`;
     }
 
-    const text =
-      `${supplementTitle}\n\n` +
-      `У вашому місті ${isSupplement ? "знову змінили" : "змінили"} графік відключень${dayLabel}${change ? ` (черга ${change.queue})` : ""}.\n` +
-      `Відкрийте додаток, щоб побачити що саме змінилося 👇`;
+    const text = isTomorrowAdded
+      ? `🔔 <b>Графік на завтра</b>\n\n` +
+        `Графік на завтра був доданий${change ? ` (черга ${change.queue})` : ""}.\n` +
+        `Графік вже доступний у додатку 👇`
+      : `${supplementTitle}\n\n` +
+        `У вашому місті ${isSupplement ? "знову змінили" : "змінили"} графік відключень${dayLabel}${change ? ` (черга ${change.queue})` : ""}.\n` +
+        `Відкрийте додаток, щоб побачити що саме змінилося 👇`;
+
+    const btnText = isTomorrowAdded ? "⚡️ Переглянути графік на завтра" : "⚡️ Переглянути оновлення";
+    const btnUrl = isTomorrowAdded
+      ? `${MINI_APP_URL.replace(/\/+$/, "")}/?tab=tomorrow`
+      : `${MINI_APP_URL.replace(/\/+$/, "")}/?screen=changes`;
 
     let sent = false;
     let messageId: number | undefined;
@@ -489,7 +512,7 @@ async function processOutbox(): Promise<number> {
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [[
-              { text: "⚡️ Переглянути оновлення", web_app: { url: targetUrl } },
+              { text: btnText, web_app: { url: btnUrl } },
             ]],
           },
         }),

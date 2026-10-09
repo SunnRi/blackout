@@ -1674,7 +1674,13 @@ function AdminView({ initData, onBack }: { initData: string; onBack: () => void 
 
 function App() {
   const [view, setView] = useState<View>('schedule');
-  const [dayTab, setDayTab] = useState<DayTab>('today');
+  const [dayTab, setDayTab] = useState<DayTab>(() => {
+    if (typeof window !== 'undefined') {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab === 'tomorrow') return 'tomorrow';
+    }
+    return 'today';
+  });
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState<KyivTime>(getKyivTime());
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
