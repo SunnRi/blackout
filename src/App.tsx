@@ -781,9 +781,20 @@ function Onboarding({
 
 // ── Change history ────────────────────────────────────────────
 type DiffSlot = { start: number; end: number; type: string };
+type ChangeItem = {
+  queue: string;
+  day: string;
+  scheduleDate: string | null;
+  changeType: string;
+  summary: string;
+  oldSlots: DiffSlot[] | null;
+  newSlots: DiffSlot[] | null;
+  supplementedAt?: string | null;
+};
 type ChangeGroup = {
   detectedAt: string;
-  items: { queue: string; day: string; scheduleDate: string | null; changeType: string; summary: string; oldSlots: DiffSlot[] | null; newSlots: DiffSlot[] | null }[];
+  supplementedAt?: string | null;
+  items: ChangeItem[];
 };
 
 function parseSlotRows(json: unknown): DiffSlot[] {
@@ -800,19 +811,130 @@ function formatMinutes(min: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+function formatKyivHourMinute(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('uk-UA', {
+      timeZone: 'Europe/Kyiv',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+}
+
 function formatChangeTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
+  const timeStr = formatKyivHourMinute(iso);
   const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000);
-  if (diffMin < 1) return 'щойно';
-  if (diffMin < 60) return `${diffMin} хв тому`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH} год тому`;
+  if (diffMin < 1) return `щойно (${timeStr})`;
+  if (diffMin < 60) return `${timeStr} · ${diffMin} хв тому`;
+  const dKyiv = d.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' });
+  const nowKyiv = now.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' });
+  if (dKyiv === nowKyiv) {
+    const diffH = Math.floor(diffMin / 60);
+    return `${timeStr} · ${diffH} год тому`;
+  }
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${day}.${month} ${hh}:${mm}`;
+  return `${day}.${month} о ${timeStr}`;
+}
+
+function clusterScheduleChanges(records: ScheduleChange[]): ChangeGroup[] {
+  if (!records || records.length === 0) return [];
+
+  // Sort chronologically ascending to detect clusters within 2-3 hours
+  const sorted = [...records].sort(
+    (a, b) => new Date(a.detected_at).getTime() - new Date(b.detected_at).getTime()
+  );
+
+  const CLUSTER_GAP_MS = 3 * 60 * 60 * 1000; // 3 hours window
+
+  type Cluster = {
+    firstDetectedAt: string;
+    lastDetectedAt: string;
+    records: ScheduleChange[];
+  };
+
+  const clusters: Cluster[] = [];
+  let currentCluster: Cluster | null = null;
+
+  for (const r of sorted) {
+    const t = new Date(r.detected_at).getTime();
+    if (!currentCluster) {
+      currentCluster = { firstDetectedAt: r.detected_at, lastDetectedAt: r.detected_at, records: [r] };
+      clusters.push(currentCluster);
+    } else {
+      const prevTime = new Date(currentCluster.lastDetectedAt).getTime();
+      if (t - prevTime <= CLUSTER_GAP_MS) {
+        currentCluster.lastDetectedAt = r.detected_at;
+        currentCluster.records.push(r);
+      } else {
+        currentCluster = { firstDetectedAt: r.detected_at, lastDetectedAt: r.detected_at, records: [r] };
+        clusters.push(currentCluster);
+      }
+    }
+  }
+
+  const groups: ChangeGroup[] = clusters.map((cluster) => {
+    const firstMs = new Date(cluster.firstDetectedAt).getTime();
+    const lastMs = new Date(cluster.lastDetectedAt).getTime();
+    const isSupplemented = lastMs - firstMs >= 5 * 60 * 1000;
+
+    // Combine queue updates within the same cluster
+    const itemsMap = new Map<string, {
+      firstItem: ScheduleChange;
+      lastItem: ScheduleChange;
+      amended: boolean;
+    }>();
+
+    for (const r of cluster.records) {
+      const key = `${r.queue}|${r.day}|${r.schedule_date ?? ''}`;
+      const existing = itemsMap.get(key);
+      if (!existing) {
+        itemsMap.set(key, { firstItem: r, lastItem: r, amended: false });
+      } else {
+        existing.lastItem = r;
+        existing.amended = true;
+      }
+    }
+
+    const items: ChangeItem[] = [];
+    for (const [, { firstItem, lastItem, amended }] of itemsMap) {
+      const oldSlots = parseSlotRows(firstItem.old_slots);
+      const newSlots = parseSlotRows(lastItem.new_slots);
+      const itemLastMs = new Date(lastItem.detected_at).getTime();
+      items.push({
+        queue: lastItem.queue,
+        day: lastItem.day,
+        scheduleDate: lastItem.schedule_date,
+        changeType: lastItem.change_type,
+        summary: lastItem.summary,
+        oldSlots,
+        newSlots,
+        supplementedAt: amended && itemLastMs - firstMs >= 5 * 60 * 1000 ? lastItem.detected_at : null,
+      });
+    }
+
+    return {
+      detectedAt: cluster.firstDetectedAt,
+      supplementedAt: isSupplemented ? cluster.lastDetectedAt : null,
+      items,
+    };
+  });
+
+  // Sort descending so the latest active cluster is on top
+  groups.sort((a, b) => {
+    const timeA = new Date(a.supplementedAt ?? a.detectedAt).getTime();
+    const timeB = new Date(b.supplementedAt ?? b.detectedAt).getTime();
+    return timeB - timeA;
+  });
+
+  return groups;
 }
 
 const MONTHS_UK = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
@@ -936,16 +1058,7 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
       .order('detected_at', { ascending: false })
       .then(({ data, error: err }) => {
         if (err) { setError(true); setGroups([]); return; }
-        const byTime = new Map<string, ChangeGroup>();
-        for (const r of (data ?? []) as ScheduleChange[]) {
-          let g = byTime.get(r.detected_at);
-          if (!g) { g = { detectedAt: r.detected_at, items: [] }; byTime.set(r.detected_at, g); }
-          g.items.push({
-            queue: r.queue, day: r.day, scheduleDate: r.schedule_date, changeType: r.change_type, summary: r.summary,
-            oldSlots: parseSlotRows(r.old_slots), newSlots: parseSlotRows(r.new_slots),
-          });
-        }
-        setGroups([...byTime.values()]);
+        setGroups(clusterScheduleChanges((data ?? []) as ScheduleChange[]));
       });
     supabase
       .from('schedule_check_state')
@@ -1033,39 +1146,59 @@ function ChangeHistory({ oblastSlug, citySlug }: { oblastSlug: string; citySlug:
       ) : (
         <>
           {/* All changes from the last 24 hours, latest emphasized */}
-          {filteredGroups.map((g, gi) => (
-            <div key={g.detectedAt} className={`d-card px-3.5 py-3 fade-in ${gi === 0 ? 'ring-2 ring-blue-500/30' : 'opacity-75'}`}
-              style={gi === 0 ? { backgroundColor: 'rgba(59,130,246,0.06)' } : undefined}
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <span className={`flex h-6 w-6 items-center justify-center rounded-full ${gi === 0 ? 'accent-soft-bg' : 'bg-black/5 dark:bg-white/8'}`}>
-                  <RefreshCw className={`h-3 w-3 ${gi === 0 ? 'accent-c' : 'text-muted-c'}`} />
-                </span>
-                <span className="text-xs font-bold text-primary-c">
-                  {formatChangeTime(g.detectedAt)}{gi === 0 && ' · найсвіжіше'}
-                </span>
-              </div>
-              <div className="space-y-1.5">
-                {g.items
-                  .filter((it) => {
-                    const label = formatScheduleDate(it.scheduleDate, it.day);
-                    return changeDayTab === 'today' ? label === 'сьогодні' : label === 'завтра';
-                  })
-                  .map((it, i) => (
-                    <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
-                      <div className="flex items-center gap-1.5">
-                        <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
+          {filteredGroups.map((g, gi) => {
+            const isSupplemented = Boolean(g.supplementedAt && g.supplementedAt !== g.detectedAt);
+            const supplementedTime = g.supplementedAt ? formatKyivHourMinute(g.supplementedAt) : '';
+
+            return (
+              <div key={g.detectedAt} className={`d-card px-3.5 py-3 fade-in ${gi === 0 ? 'ring-2 ring-blue-500/30' : 'opacity-75'}`}
+                style={gi === 0 ? { backgroundColor: 'rgba(59,130,246,0.06)' } : undefined}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <span className={`flex h-6 w-6 items-center justify-center rounded-full ${gi === 0 ? 'accent-soft-bg' : 'bg-black/5 dark:bg-white/8'}`}>
+                    <RefreshCw className={`h-3 w-3 ${gi === 0 ? 'accent-c' : 'text-muted-c'}`} />
+                  </span>
+                  <div className="flex flex-wrap items-baseline gap-x-1.5">
+                    <span className="text-xs font-bold text-primary-c">
+                      {formatChangeTime(g.detectedAt)}
+                    </span>
+                    {isSupplemented && (
+                      <span className="text-xs font-semibold text-amber-500 dark:text-amber-400">
+                        (Доповнено о {supplementedTime})
+                      </span>
+                    )}
+                    {gi === 0 && (
+                      <span className="text-xs font-bold text-primary-c">· найсвіжіше</span>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {g.items
+                    .filter((it) => {
+                      const label = formatScheduleDate(it.scheduleDate, it.day);
+                      return changeDayTab === 'today' ? label === 'сьогодні' : label === 'завтра';
+                    })
+                    .map((it, i) => (
+                      <div key={i} className="rounded-xl bg-black/4 px-3 py-2 dark:bg-white/6">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className="rounded-md accent-soft-bg px-1.5 py-0.5 text-[10px] font-bold accent-c">Черга {it.queue}</span>
+                          {it.supplementedAt && (
+                            <span className="text-[10px] text-muted-c">
+                              Доповнено о {formatKyivHourMinute(it.supplementedAt)}
+                            </span>
+                          )}
+                        </div>
+                        {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
+                          <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
+                        ) : (
+                          <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
+                        )}
                       </div>
-                      {it.oldSlots && it.newSlots && (it.oldSlots.length > 0 || it.newSlots.length > 0) ? (
-                        <DiffTimeline oldSlots={it.oldSlots} newSlots={it.newSlots} />
-                      ) : (
-                        <p className="mt-1 text-xs leading-relaxed text-secondary-c">{it.summary}</p>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </>
       )}
     </div>

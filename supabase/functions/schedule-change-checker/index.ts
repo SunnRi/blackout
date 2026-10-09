@@ -449,12 +449,36 @@ async function processOutbox(): Promise<number> {
     const change = changeRow as { queue: string; summary: string; day: string; schedule_date: string | null } | null;
     const dayLabel = change?.day === "tomorrow" ? " на завтра" : change?.day === "today" ? " на сьогодні" : "";
 
+    // Check if the user was already notified about a schedule update within the last 3 hours
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    const { data: recentSent } = await supabase
+      .from("notification_outbox")
+      .select("sent_at")
+      .eq("tg_user_id", item.tg_user_id)
+      .eq("status", "sent")
+      .gte("sent_at", threeHoursAgo)
+      .order("sent_at", { ascending: false })
+      .limit(1);
+
+    const isSupplement = Boolean(recentSent && recentSent.length > 0);
+    let supplementTitle = "🔔 <b>Оновлення графіків</b>";
+    if (isSupplement) {
+      const kyivTime = new Intl.DateTimeFormat("uk-UA", {
+        timeZone: "Europe/Kyiv",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date());
+      supplementTitle = `🔔 <b>Оновлення графіків</b> (Доповнено о ${kyivTime})`;
+    }
+
     const text =
-      `🔔 <b>Оновлення графіків</b>\n\n` +
-      `У вашому місті змінили графік відключень${dayLabel}${change ? ` (черга ${change.queue})` : ""}.\n` +
+      `${supplementTitle}\n\n` +
+      `У вашому місті ${isSupplement ? "знову змінили" : "змінили"} графік відключень${dayLabel}${change ? ` (черга ${change.queue})` : ""}.\n` +
       `Відкрийте додаток, щоб побачити що саме змінилося 👇`;
 
     let sent = false;
+    let messageId: number | undefined;
     try {
       const resp = await fetch(`${TELEGRAM_API}/sendMessage`, {
         method: "POST",
@@ -470,14 +494,21 @@ async function processOutbox(): Promise<number> {
           },
         }),
       });
-      const json = await resp.json() as { ok?: boolean };
+      const json = await resp.json() as { ok?: boolean; result?: { message_id?: number } };
       sent = !!json.ok;
+      messageId = json.result?.message_id;
     } catch {
       sent = false;
     }
 
     if (sent) {
       sentCount++;
+      if (typeof messageId === "number") {
+        await supabase.from("telegram_bot_messages").upsert({
+          tg_user_id: item.tg_user_id,
+          message_id: messageId,
+        });
+      }
       await supabase
         .from("notification_outbox")
         .update({ status: "sent", sent_at: new Date().toISOString() })
