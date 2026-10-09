@@ -1554,6 +1554,7 @@ function AdminView({ initData, onBack }: { initData: string; onBack: () => void 
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [expandedRegion, setExpandedRegion] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [showCityChecks, setShowCityChecks] = useState(false);
@@ -1561,18 +1562,24 @@ function AdminView({ initData, onBack }: { initData: string; onBack: () => void 
   const load = async () => {
     setLoading(true);
     setError(false);
+    setErrorMsg(null);
     try {
+      const tgInitData = getTelegramWebApp()?.initData || initData;
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-stats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ initData }),
+        body: JSON.stringify({ initData: tgInitData }),
       });
-      if (!response.ok) throw new Error('stats request failed');
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(errJson?.error || `Помилка ${response.status}`);
+      }
       const data = await response.json() as AdminStats;
-      if (!data.users || !Array.isArray(data.regions) || !data.schedules) throw new Error('invalid stats');
+      if (!data.users || !Array.isArray(data.regions) || !data.schedules) throw new Error('Некоректний формат даних');
       setStats(data);
-    } catch {
+    } catch (err) {
       setError(true);
+      setErrorMsg(err instanceof Error ? err.message : 'Помилка запиту');
     } finally {
       setLoading(false);
     }
@@ -1584,7 +1591,16 @@ function AdminView({ initData, onBack }: { initData: string; onBack: () => void 
     return <div className="flex flex-col items-center justify-center py-20 text-secondary-c"><Loader2 className="h-8 w-8 animate-spin accent-c" /><p className="mt-3 text-sm">Завантаження статистики...</p></div>;
   }
   if (error || !stats) {
-    return <div className="d-card p-6 text-center"><AlertTriangle className="mx-auto h-8 w-8 text-amber-500" /><p className="mt-3 text-sm text-secondary-c">Не вдалося завантажити статистику</p><button onClick={() => void load()} className="mt-4 rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white">Повторити</button></div>;
+    return (
+      <div className="d-card p-6 text-center">
+        <AlertTriangle className="mx-auto h-8 w-8 text-amber-500" />
+        <p className="mt-3 text-sm font-semibold text-primary-c">Не вдалося завантажити статистику</p>
+        {errorMsg && <p className="mt-1 text-xs text-secondary-c">{errorMsg}</p>}
+        <button onClick={() => void load()} className="mt-4 rounded-xl accent-bg px-4 py-2 text-sm font-bold text-white">
+          Повторити
+        </button>
+      </div>
+    );
   }
 
   return (

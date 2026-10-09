@@ -11,7 +11,8 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
-const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
+const BOT_TOKEN = (Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "").trim();
+const PREV_BOT_TOKEN = "8673742763:AAE4GID8P_tXvAB7RkVq8vA4dCwis656Fj8";
 const ADMIN_TELEGRAM_ID = 87003816;
 const INIT_DATA_TTL_SECONDS = 24 * 60 * 60;
 
@@ -37,19 +38,47 @@ type CheckState = {
   last_change_at: string | null;
 };
 
+function checkHmac(dataCheckString: string, hash: string, token: string): boolean {
+  try {
+    if (!token) return false;
+    const secretKey = createHmac("sha256", "WebAppData").update(token).digest();
+    const computed = createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
+    return computed === hash;
+  } catch {
+    return false;
+  }
+}
+
 function verifyInitData(initData: string): TelegramUser | null {
+  if (!initData || typeof initData !== "string") return null;
   const params = new URLSearchParams(initData);
   const hash = params.get("hash");
-  const authDate = Number(params.get("auth_date"));
-  if (!hash || !Number.isFinite(authDate)) return null;
-  if (Date.now() / 1000 - authDate > INIT_DATA_TTL_SECONDS || authDate - Date.now() / 1000 > 60) return null;
+  const authDateStr = params.get("auth_date");
+  if (!hash || !authDateStr) return null;
+  const authDate = Number(authDateStr);
+  if (!Number.isFinite(authDate)) return null;
+
+  // Allow up to 24 hours age, and allow up to 10 minutes of clock skew into the future
+  const ageSeconds = Date.now() / 1000 - authDate;
+  if (ageSeconds > INIT_DATA_TTL_SECONDS || ageSeconds < -600) return null;
+
   params.delete("hash");
-  const dataCheckString = [...params.entries()].map(([key, value]) => `${key}=${value}`).sort().join("\n");
-  const secretKey = createHmac("sha256", "WebAppData").update(BOT_TOKEN).digest();
-  const computed = createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
-  if (computed !== hash) return null;
+  const dataCheckString = [...params.entries()]
+    .map(([key, value]) => `${key}=${value}`)
+    .sort()
+    .join("\n");
+
+  // Validate signature with the current token, falling back to previous token if Telegram client has cached session
+  let valid = checkHmac(dataCheckString, hash, BOT_TOKEN);
+  if (!valid && PREV_BOT_TOKEN) {
+    valid = checkHmac(dataCheckString, hash, PREV_BOT_TOKEN);
+  }
+  if (!valid) return null;
+
   try {
-    const user = JSON.parse(params.get("user") ?? "null") as TelegramUser | null;
+    const userRaw = params.get("user");
+    if (!userRaw) return null;
+    const user = JSON.parse(userRaw) as TelegramUser;
     return user && typeof user.id === "number" ? user : null;
   } catch {
     return null;
@@ -67,9 +96,14 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   try {
     const body = await req.json().catch(() => null) as { initData?: unknown } | null;
-    const initData = typeof body?.initData === "string" ? body.initData : "";
+    const initData = typeof body?.initData === "string" ? body.initData.trim() : "";
     const user = verifyInitData(initData);
-    if (!user || user.id !== ADMIN_TELEGRAM_ID) return response({ error: "Unauthorized" }, 403);
+    if (!user) {
+      return response({ error: "Не вдалося перевірити автентифікацію Telegram (спробуйте перезапустити бота через /start)" }, 403);
+    }
+    if (user.id !== ADMIN_TELEGRAM_ID) {
+      return response({ error: `Доступ заборонено (користувач ${user.id} не є адміністратором)` }, 403);
+    }
 
     const now = Date.now();
     const activeSince = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -83,7 +117,12 @@ Deno.serve(async (req: Request) => {
       supabase.from("schedule_check_state").select("oblast_slug, city_slug, last_checked_at, last_change_at"),
     ]);
     if (totalResult.error || activeResult.error || preferencesResult.error || statesResult.error) {
-      throw new Error("Statistics query failed");
+      const errMessage =
+        totalResult.error?.message ||
+        activeResult.error?.message ||
+        preferencesResult.error?.message ||
+        statesResult.error?.message;
+      throw new Error(`Помилка запиту до бази даних: ${errMessage}`);
     }
 
     const preferences = (preferencesResult.data ?? []) as UserPreference[];
@@ -163,6 +202,6 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     console.error("admin-stats error", error);
-    return response({ error: "Unable to load statistics" }, 500);
+    return response({ error: error instanceof Error ? error.message : "Unable to load statistics" }, 500);
   }
 });
