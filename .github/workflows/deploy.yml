@@ -1,4 +1,4 @@
-name: Deploy to VPS
+name: Deploy to Server
 
 on:
   push:
@@ -7,34 +7,57 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          script: |
-            echo "🚀 Начало деплоя..."
-            cd ${{ secrets.SERVER_DIR || '/var/www/blackout.juvelirbc.com.ua' }}
-            
-            echo "📥 Получение свежего кода из GitHub..."
-            git pull origin main
-            
-            echo "📦 Установка зависимостей..."
-            npm install
-            
-            echo "🔨 Сборка проекта..."
-            npm run build
-            
-            echo "🔄 Перезапуск процесса Node.js..."
-            if command -v pm2 > /dev/null 2>&1; then
-              pm2 reload all || pm2 restart all || true
-            fi
-            
-            echo "✅ Деплой успешно завершён!"
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://amgaictjajtyogwwjulx.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtZ2FpY3RqYWp0eW9nd3dqdWx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyOTAwODQsImV4cCI6MjEwNjg2NjA4NH0.aVVZfed48e_VRIkrepBSDN5ugW-F4NgDe4orgjeCNHhI' }}
+        run: npm run build
+
+      - name: Deploy to Server via Rsync
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST || '190.124.47.67' }}
+          SERVER_USER: ${{ secrets.SERVER_USER || 'ysqonaff' }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD || 'j5eZJ#32ACib' }}
+          TARGET_DIR: '/home/ysqonaff/blackout.juvelirbc.com.ua'
+        run: |
+          mkdir -p ~/.ssh
+          if [ -n "$SERVER_SSH_KEY" ]; then
+            echo "Используется SSH ключ..."
+            echo "$SERVER_SSH_KEY" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -p 22" \
+              --exclude '.htaccess' \
+              --exclude '.well-known' \
+              --exclude 'cgi-bin' \
+              dist/ $SERVER_USER@$SERVER_HOST:$TARGET_DIR/
+          elif [ -n "$SERVER_PASSWORD" ]; then
+            echo "Используется пароль..."
+            sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+            rsync -avz -e "sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no -p 22" \
+              --exclude '.htaccess' \
+              --exclude '.well-known' \
+              --exclude 'cgi-bin' \
+              dist/ $SERVER_USER@$SERVER_HOST:$TARGET_DIR/
+          else
+            echo "Ошибка: не указан ни ключ, ни пароль!"
+            exit 1
+          fi
+          echo "✅ Файлы успешно обновлены на сервере!"
+
