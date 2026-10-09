@@ -25,8 +25,8 @@ jobs:
 
       - name: Build project
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://amgaictjajtyogwwjulx.supabase.co' }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtZ2FpY3RqYWp0eW9nd3dqdWx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyOTAwODQsImV4cCI6MjEwNjg2NjA4NH0.aVVZfed48e_VRIkrepBSDN5ugW-F4NgDe4orgjeCNHhI' }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://umkftvnorktyyrzqbjcm.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_xTeItVno5taArJKazMaAdQ_bDRXunPv' }}
         run: npm run build
 
       - name: Deploy to Server via Rsync
