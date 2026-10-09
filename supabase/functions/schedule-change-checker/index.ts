@@ -346,12 +346,20 @@ async function checkCity(
   // locations (home or alt) — changes in other queues stay silent.
   if (insertedChanges.length > 0 && followersByUser.size > 0) {
     const outboxRows: { tg_user_id: number; change_id: string }[] = [];
+    // Deduplicate per user per check run so a user with changes in multiple
+    // queues or across today+tomorrow receives at most one notification.
+    const userToChange = new Map<number, string>();
     for (const ch of insertedChanges) {
       for (const [tgUserId, queues] of followersByUser) {
         if (!queues.has(ch.queue)) continue;
         if (!enabledByUser.get(tgUserId)) continue;
-        outboxRows.push({ tg_user_id: tgUserId, change_id: ch.id });
+        if (!userToChange.has(tgUserId)) {
+          userToChange.set(tgUserId, ch.id);
+        }
       }
+    }
+    for (const [tgUserId, changeId] of userToChange) {
+      outboxRows.push({ tg_user_id: tgUserId, change_id: changeId });
     }
     if (outboxRows.length > 0) {
       // Deduplicate: don't insert if the same user+change already exists.
@@ -416,8 +424,21 @@ async function processOutbox(): Promise<number> {
 
   if (error || !pending || pending.length === 0) return 0;
 
+  const targetUrl = `${MINI_APP_URL.replace(/\/+$/, "")}/?screen=changes`;
+  const seenUsers = new Set<number>();
   let sentCount = 0;
+
   for (const item of pending as { id: string; tg_user_id: number; change_id: string; attempts: number }[]) {
+    // If a notification was already sent to this user in this batch, avoid double-notifying.
+    if (seenUsers.has(item.tg_user_id)) {
+      await supabase
+        .from("notification_outbox")
+        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .eq("id", item.id);
+      continue;
+    }
+    seenUsers.add(item.tg_user_id);
+
     // Fetch the change details for the message.
     const { data: changeRow } = await supabase
       .from("schedule_change_log")
@@ -426,10 +447,11 @@ async function processOutbox(): Promise<number> {
       .maybeSingle();
 
     const change = changeRow as { queue: string; summary: string; day: string; schedule_date: string | null } | null;
+    const dayLabel = change?.day === "tomorrow" ? " на завтра" : change?.day === "today" ? " на сьогодні" : "";
 
     const text =
       `🔔 <b>Оновлення графіків</b>\n\n` +
-      `У вашому місті змінили графік відключень${change ? ` (черга ${change.queue})` : ""}.\n` +
+      `У вашому місті змінили графік відключень${dayLabel}${change ? ` (черга ${change.queue})` : ""}.\n` +
       `Відкрийте додаток, щоб побачити що саме змінилося 👇`;
 
     let sent = false;
@@ -440,9 +462,10 @@ async function processOutbox(): Promise<number> {
         body: JSON.stringify({
           chat_id: item.tg_user_id,
           text,
+          parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [[
-              { text: "⚡️ Переглянути оновлення", web_app: { url: `${MINI_APP_URL}?screen=changes` } },
+              { text: "⚡️ Переглянути оновлення", web_app: { url: targetUrl } },
             ]],
           },
         }),
