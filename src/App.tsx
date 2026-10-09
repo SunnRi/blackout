@@ -2163,10 +2163,10 @@ function App() {
                         target="_blank"
                         rel="noreferrer"
                         className="d-btn flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-semibold text-secondary-c transition-colors hover:text-primary-c"
-                        aria-label="Повідомити розробнику про проблему"
+                        aria-label="Є помилка?"
                       >
                         <MessageCircle className="h-3.5 w-3.5 accent-c" />
-                        Повідомити про проблему
+                        Є помилка?
                       </a>
                       <div className="flex shrink-0 items-center gap-1 rounded-full bg-black/5 px-2.5 py-1 dark:bg-white/8">
                         <span className="text-[10px] leading-none text-muted-c">Зроблено з</span>
