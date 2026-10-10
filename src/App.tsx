@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Loader2, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getKyivTime, type KyivTime } from '@/lib/time';
@@ -25,6 +25,23 @@ import GuidedTour from '@/components/GuidedTour';
 import Onboarding from '@/components/Onboarding';
 import ScheduleView from '@/components/ScheduleView';
 import SettingsView from '@/components/SettingsView';
+
+type DayHighlights = { added: number[]; removed: number[] };
+
+function parseChangeSlots(v: unknown): { start: number; end: number; type: string }[] {
+  if (!Array.isArray(v)) return [];
+  const out: { start: number; end: number; type: string }[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== 'object') continue;
+    const s = raw as { start?: unknown; end?: unknown; type?: unknown };
+    const start = Number(s.start);
+    const end = Number(s.end);
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      out.push({ start, end, type: String(s.type ?? '') });
+    }
+  }
+  return out;
+}
 
 function App() {
   const [view, setView] = useState<View>('schedule');
@@ -211,27 +228,99 @@ function App() {
 
   // Opening the changes tab marks everything as seen — server-side so it
   // travels with the user's Telegram account across devices/sessions.
-  useEffect(() => {
-    if (view !== 'changes') return;
+  const sendMarkChangesSeen = useCallback(() => {
+    const tg = getTelegramWebApp();
+    const oblast = selectedOblast?.slug;
+    const city = selectedCity?.slug;
+    if (!tg?.initData || !oblast || !city) return;
     const ts = new Date().toISOString();
     lastSeenChangeRef.current = ts;
     setUnseenChanges(false);
-    const tg = getTelegramWebApp();
-    if (tg?.initData) {
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({
-          initData: tg.initData,
-          markChangesSeen: true,
-          patch: {
-            oblast_slug: selectedOblast?.slug ?? '',
-            city_slug: selectedCity?.slug ?? '',
-          },
-        }),
-      }).catch(() => { /* best-effort */ });
-    }
-  }, [view, selectedOblast, selectedCity]);
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-prefs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({
+        initData: tg.initData,
+        markChangesSeen: true,
+        patch: { oblast_slug: oblast, city_slug: city },
+      }),
+    }).catch(() => { /* best-effort */ });
+  }, [selectedOblast, selectedCity]);
+
+  // Opening the changes tab marks everything as seen.
+  useEffect(() => {
+    if (view !== 'changes') return;
+    sendMarkChangesSeen();
+  }, [view, sendMarkChangesSeen]);
+
+  // After a schedule update the changed intervals glow on the user's first
+  // visit. Derive them from the change log so only the actual ranges light up.
+  const [highlights, setHighlights] = useState<{
+    today: DayHighlights;
+    tomorrow: DayHighlights;
+  } | null>(null);
+
+  useEffect(() => {
+    setHighlights(null);
+    if (!selectedOblast || !selectedCity || !selectedGroup || !unseenChanges) return;
+    let cancelled = false;
+    const since = lastSeenChangeRef.current
+      ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    supabase
+      .from('schedule_change_log')
+      .select('day, change_type, old_slots, new_slots')
+      .eq('oblast_slug', selectedOblast.slug)
+      .eq('city_slug', selectedCity.slug)
+      .eq('queue', selectedGroup)
+      .gte('detected_at', since)
+      .order('detected_at', { ascending: false })
+      .limit(40)
+      .then(async ({ data }) => {
+        if (cancelled) return;
+        const empty = (): DayHighlights => ({ added: [], removed: [] });
+        const result = { today: empty(), tomorrow: empty() };
+        if (Array.isArray(data)) {
+          for (const row of data as {
+            day: string; change_type: string; old_slots: unknown; new_slots: unknown;
+          }[]) {
+            const day = row.day === 'tomorrow' ? 'tomorrow' : 'today';
+            const oldSlots = parseChangeSlots(row.old_slots);
+            const newSlots = parseChangeSlots(row.new_slots);
+            const key = (s: { start: number; end: number; type: string }) => `${s.start}-${s.end}:${s.type}`;
+            const oldSet = new Set(oldSlots.map(key));
+            const newSet = new Set(newSlots.map(key));
+            if (row.change_type === 'removed' || newSlots.length === 0) {
+              for (const s of oldSlots) result[day].removed.push(s.start);
+            } else {
+              for (const s of newSlots) if (!oldSet.has(key(s))) result[day].added.push(s.start);
+              for (const s of oldSlots) if (!newSet.has(key(s))) result[day].removed.push(s.start);
+            }
+          }
+          result.today.added = [...new Set(result.today.added)];
+          result.today.removed = [...new Set(result.today.removed)];
+          result.tomorrow.added = [...new Set(result.tomorrow.added)];
+          result.tomorrow.removed = [...new Set(result.tomorrow.removed)];
+        }
+        setHighlights(result);
+      }, () => { /* errors leave highlights empty */ });
+    return () => { cancelled = true; };
+  }, [selectedOblast, selectedCity, selectedGroup, unseenChanges]);
+
+  // Mark the shown changes as seen as soon as the mini app is closed/hidden,
+  // so the next open shows a clean schedule without the glow.
+  useEffect(() => {
+    const markOnClose = () => {
+      if (view === 'changes' || !unseenChanges) return;
+      sendMarkChangesSeen();
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') markOnClose(); };
+    window.addEventListener('pagehide', markOnClose);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', markOnClose);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [view, unseenChanges, sendMarkChangesSeen]);
 
   // Show the guided tour once, right after onboarding lands on the main screen.
   useEffect(() => {
@@ -673,6 +762,7 @@ return (
           density={density}
           todaySlots={todaySlots}
           tomorrowSlots={tomorrowSlots}
+          highlights={highlights}
           displaySlots={displaySlots}
           displaySchedule={displaySchedule}
           altOblast={altOblast}

@@ -407,7 +407,7 @@ async function updateNotifySettings(
   // Keep tg_username unchanged by not touching it; upsert only the patch.
   const { data: existing } = await supabase
     .from("user_preferences")
-    .select("tg_username")
+    .select("tg_username, notify_enabled, notify_minutes_before")
     .eq("tg_user_id", tgUserId)
     .maybeSingle();
   await supabase
@@ -421,6 +421,23 @@ async function updateNotifySettings(
       },
       { onConflict: "tg_user_id" },
     );
+
+  // Re-arm outage notifications when delivery settings actually changed.
+  // Claims in sent_notifications are keyed by (user, event_start) and would
+  // otherwise block the re-send (e.g. a 60 xв notice arrived, user switches
+  // to 30 xв - the reminder must fire again).
+  const cur = (existing as { notify_enabled?: boolean; notify_minutes_before?: number } | null) ?? {};
+  const changed =
+    (patch.notify_enabled !== undefined && cur.notify_enabled !== patch.notify_enabled) ||
+    (patch.notify_minutes_before !== undefined &&
+      cur.notify_minutes_before !== patch.notify_minutes_before);
+  if (changed) {
+    await supabase
+      .from("sent_notifications")
+      .delete()
+      .eq("tg_user_id", tgUserId)
+      .gte("event_start", new Date().toISOString());
+  }
 }
 
 // ── Messages ──────────────────────────────────────────────────

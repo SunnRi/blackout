@@ -5,7 +5,7 @@ import { type KyivTime } from '@/lib/time';
 import { slotDuration } from '@/lib/format';
 import { isSlotActive } from '@/lib/schedule';
 // ── Event lists ───────────────────────────────────────────────
-function CompactList({ slots, now, isToday, limit }: { slots: Slot[]; now: KyivTime; isToday: boolean; limit?: number }) {
+function CompactList({ slots, now, isToday, limit, highlightStarts, cancelledStarts }: { slots: Slot[]; now: KyivTime; isToday: boolean; limit?: number; highlightStarts?: number[]; cancelledStarts?: number[] }) {
   const sorted = useMemo(() => [...slots].sort((a, b) => a.start - b.start), [slots]);
   const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
 
@@ -32,6 +32,8 @@ function CompactList({ slots, now, isToday, limit }: { slots: Slot[]; now: KyivT
         const isOff = slot.type === 'Definite';
         const active = isToday && isSlotActive(slot, now);
         const isPast = isToday && currentMin >= slot.end;
+        const hl = highlightStarts?.includes(slot.start) ?? false;
+        const cancelled = cancelledStarts?.includes(slot.start) ?? false;
         const dotColor = isOff ? 'var(--on-negative)' : 'var(--on-positive)';
 
         return (
@@ -43,7 +45,7 @@ function CompactList({ slots, now, isToday, limit }: { slots: Slot[]; now: KyivT
                   ? 'bg-red-500/15 ring-1 ring-inset ring-red-500/25'
                   : 'bg-emerald-500/15 ring-1 ring-inset ring-emerald-500/25'
                 : isPast ? 'opacity-35' : ''
-            }`}
+            } ${hl ? 'bg-amber-400/10 ring-1 ring-inset ring-amber-400/50' : ''} ${cancelled ? 'opacity-50' : ''}`}
           >
             <div
               className={`h-2 w-2 shrink-0 rounded-full ${active ? 'now-marker' : ''}`}
@@ -55,6 +57,12 @@ function CompactList({ slots, now, isToday, limit }: { slots: Slot[]; now: KyivT
             {active && (
               <span className="rounded-full accent-soft-bg accent-c px-1.5 py-0.5 text-[10px] font-bold">зараз</span>
             )}
+            {hl && !cancelled && (
+              <span className="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">оновлено</span>
+            )}
+            {cancelled && (
+              <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 line-through">скасовано</span>
+            )}
             <span className="ml-auto text-xs text-muted-c">
               {isOff ? 'без світла' : 'є світло'} · {slotDuration(slot)}
             </span>
@@ -65,7 +73,7 @@ function CompactList({ slots, now, isToday, limit }: { slots: Slot[]; now: KyivT
   );
 }
 
-function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime; isToday: boolean }) {
+function ComfortableList({ slots, now, isToday, highlightStarts, cancelledStarts }: { slots: Slot[]; now: KyivTime; isToday: boolean; highlightStarts?: number[]; cancelledStarts?: number[] }) {
   const sorted = useMemo(() => [...slots].sort((a, b) => a.start - b.start), [slots]);
   const currentMin = isToday ? now.hours * 60 + now.minutes : -1;
 
@@ -82,6 +90,8 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
         const isOff = slot.type === 'Definite';
         const active = isToday && isSlotActive(slot, now);
         const isPast = isToday && currentMin >= slot.end;
+        const hl = highlightStarts?.includes(slot.start) ?? false;
+        const cancelled = cancelledStarts?.includes(slot.start) ?? false;
 
         return (
           <div
@@ -92,7 +102,7 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
                   ? 'ring-1 ring-inset ring-red-500/30'
                   : 'ring-1 ring-inset ring-emerald-500/30'
                 : isPast ? 'opacity-40' : ''
-            }`}
+            } ${hl ? 'ring-1 ring-inset ring-amber-400/50' : ''} ${cancelled ? 'opacity-50' : ''}`}
             style={active ? { backgroundColor: isOff ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)' } : undefined}
           >
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isOff ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
@@ -101,12 +111,18 @@ function ComfortableList({ slots, now, isToday }: { slots: Slot[]; now: KyivTime
                 : <Zap className="h-5 w-5" style={{ color: 'var(--on-positive)' }} />}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold text-primary-c" style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {minutesToTime(slot.start)} — {minutesToTime(slot.end)}
                 </span>
                 {active && (
                   <span className="rounded-full accent-soft-bg accent-c px-1.5 py-0.5 text-[10px] font-bold">зараз</span>
+                )}
+                {hl && !cancelled && (
+                  <span className="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">оновлено</span>
+                )}
+                {cancelled && (
+                  <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 line-through">скасовано</span>
                 )}
               </div>
               <p className={`text-xs ${isOff ? 'text-red-400/70 dark:text-red-300/60' : 'text-emerald-500/70 dark:text-emerald-300/60'}`}>

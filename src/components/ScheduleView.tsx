@@ -23,6 +23,10 @@ type ScheduleViewProps = {
   density: Density;
   todaySlots: Slot[];
   tomorrowSlots: Slot[];
+  highlights?: {
+    today: { added: number[]; removed: number[] };
+    tomorrow: { added: number[]; removed: number[] };
+  } | null;
   displaySlots: Slot[];
   displaySchedule: CitySchedule | null;
   altOblast: Oblast | null;
@@ -38,9 +42,12 @@ export default function ScheduleView({
   apiError, activeLocation, altCity, altGroup, altLabel, altOblast,
   dayTab, density, displaySchedule, displaySlots, homeLabel, now, saved,
   scheduleLoading, selectedCity, selectedGroup, setDayTab, setView,
-  switchLocation, todaySlots, tomorrowSlots,
+  highlights, switchLocation, todaySlots, tomorrowSlots,
 }: ScheduleViewProps) {
   const isExtended = density === 'extended';
+  const activeAdded = dayTab === 'today' ? highlights?.today?.added : highlights?.tomorrow?.added;
+  const activeRemoved = dayTab === 'today' ? highlights?.today?.removed : highlights?.tomorrow?.removed;
+  const hasActiveHighlights = (activeAdded?.length ?? 0) > 0 || (activeRemoved?.length ?? 0) > 0;
   return (
           <div className="relative isolate">
             <div className="pointer-events-none absolute inset-x-0 -top-6 -z-10 flex justify-center">
@@ -99,6 +106,21 @@ export default function ScheduleView({
                 </div>
 
                 {/* Status by density */}
+{/* First visit after a schedule update: changed intervals glow */}
+                {hasActiveHighlights && (
+                  <div className="mb-3 flex items-center justify-between gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs fade-in">
+                    <span className="text-amber-700 dark:text-amber-300">
+                      <RefreshCw className="mr-1 inline h-3 w-3 align-[-1px]" />
+                      Є оновлення графіка — змінені інтервали підсвічені
+                    </span>
+                    <button
+                      onClick={() => { setView('changes'); hapticImpact('light'); }}
+                      className="shrink-0 rounded-full bg-amber-500/20 px-2.5 py-1 font-semibold text-amber-700 transition-colors hover:bg-amber-500/30 dark:text-amber-300"
+                    >
+                      Деталі
+                    </button>
+                  </div>
+                )}
                 {density === 'minimal' && <div className="mb-3"><StatusLine slots={todaySlots} now={now} /></div>}
                 {density === 'standard' && <div className="mb-3"><StatusCompact slots={todaySlots} now={now} /></div>}
                 {density === 'extended' && <div className="mb-3"><StatusFull slots={todaySlots} now={now} /></div>}
@@ -147,7 +169,12 @@ export default function ScheduleView({
                         <p className="max-w-xs px-4 text-sm text-secondary-c">Графік відключень ще не опубліковано. Очікуємо оновлення інформації</p>
                       </div>
                     ) : (
-                      <CompactList slots={dayTab === 'today' ? todaySlots : tomorrowSlots} now={now} isToday={dayTab === 'today'} />
+                      <CompactList
+                        slots={dayTab === 'today' ? todaySlots : tomorrowSlots}
+                        now={now} isToday={dayTab === 'today'}
+                        highlightStarts={activeAdded}
+                        cancelledStarts={activeRemoved}
+                      />
                     )}
                   </div>
                 )}
@@ -159,18 +186,23 @@ export default function ScheduleView({
                         <p className="max-w-xs px-4 text-sm text-secondary-c">Графік відключень ще не опубліковано. Очікуємо оновлення інформації</p>
                       </div>
                     ) : (
-                      <CompactList slots={displaySlots} now={now} isToday={dayTab === 'today'} />
+                      <CompactList
+                        slots={displaySlots}
+                        now={now} isToday={dayTab === 'today'}
+                        highlightStarts={activeAdded}
+                        cancelledStarts={activeRemoved}
+                      />
                     )}
                   </div>
                 )}
                 {density === 'extended' && (
                   <>
                     <div className="mb-2 mt-1 text-xs font-bold uppercase tracking-wide text-secondary-c">Сьогодні</div>
-                    <div className="mb-4"><ComfortableList slots={todaySlots} now={now} isToday={true} /></div>
+                    <div className="mb-4"><ComfortableList slots={todaySlots} now={now} isToday={true} highlightStarts={highlights?.today?.added} cancelledStarts={highlights?.today?.removed} /></div>
                     {tomorrowSlots.length > 0 && (
                       <>
                         <div className="mb-2 mt-1 text-xs font-bold uppercase tracking-wide text-secondary-c">Завтра</div>
-                        <div className="mb-4"><ComfortableList slots={tomorrowSlots} now={now} isToday={false} /></div>
+                        <div className="mb-4"><ComfortableList slots={tomorrowSlots} now={now} isToday={false} highlightStarts={highlights?.tomorrow?.added} cancelledStarts={highlights?.tomorrow?.removed} /></div>
                       </>
                     )}
                   </>

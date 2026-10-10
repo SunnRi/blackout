@@ -192,6 +192,41 @@ Deno.serve(async (req: Request) => {
         clean.last_seen_changes_at = new Date().toISOString();
       }
 
+      // ── Re-arm outage notifications when delivery settings change ──
+      // sent_notifications claims are keyed by (user, event_start): once a
+      // lead-time notification is delivered it will never fire again. If the
+      // user shortens the interval (60 -> 30 xв), switches the queue or moves
+      // home<->work, the old claim would silently block the new notification.
+      // Drop future claims so the checker re-arms with the current settings.
+      const claimFields = [
+        "notify_enabled",
+        "notify_minutes_before",
+        "queue_group",
+        "alt_queue_group",
+        "active_location",
+      ] as const;
+      const cleanHasClaimField = claimFields.some((f) => f in clean);
+      if (cleanHasClaimField) {
+        const { data: claimPrefs } = await supabase
+          .from("user_preferences")
+          .select("notify_enabled, notify_minutes_before, queue_group, alt_queue_group, active_location")
+          .eq("tg_user_id", user.id)
+          .maybeSingle();
+        const before = (claimPrefs as Record<string, unknown> | null) ?? {};
+        const claimChanged = claimFields.some((f) => {
+          const a = clean[f] ?? null;
+          const b = before[f] ?? null;
+          return String(a ?? "") !== String(b ?? "");
+        });
+        if (claimChanged) {
+          await supabase
+            .from("sent_notifications")
+            .delete()
+            .eq("tg_user_id", user.id)
+            .gte("event_start", new Date().toISOString());
+        }
+      }
+
       const { error } = await supabase
         .from("user_preferences")
         .upsert({ tg_user_id: user.id, ...clean }, { onConflict: "tg_user_id" });
